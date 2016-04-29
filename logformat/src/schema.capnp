@@ -14,3 +14,11 @@ struct Logline {
   hostname @2 :Text;
   facets @3 :Map(Text, Text);
 }
+
+struct Logblock {
+  startTime @0 :UInt64;
+  endTime @1: UInt64;
+  entries @2: List(Logline);
+}
+
+
