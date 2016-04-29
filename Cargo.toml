@@ -1,0 +1,15 @@
+[package]
+name = "log_archiving_capnp"
+version = "0.1.0"
+authors = ["Pierre Baillet <pierre@baillet.name>"]
+
+[lib]
+name = "log_archive"
+path = "src/lib.rs"
+
+[dependencies]
+
+capnp = "*"
+
+[dependencies.logformat]
+path = "./logformat"

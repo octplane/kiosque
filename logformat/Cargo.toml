@@ -1,0 +1,11 @@
+[package]
+name = "logformat"
+version = "0.1.0"
+authors = ["Pierre Baillet <pierre@baillet.name>"]
+build = "build.rs"
+
+[dependencies]
+capnp = "*"
+
+[build-dependencies]
+capnpc = "*"
