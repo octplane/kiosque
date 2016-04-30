@@ -137,7 +137,7 @@ pub fn read_log_block(file_name: &str) -> Result<(), ReadError> {
       ::capnp::message::ReaderOptions::new()));
   let logblock = try!(message_reader.get_root::<logblock::Reader>());
 
-  for line_reader in try!(logblock.get_entries()).iter() {
+  for (ix, line_reader) in try!(logblock.get_entries()).iter().enumerate() {
     let t = line_reader.get_time();
     let f = line_reader.get_facility().unwrap();
 
