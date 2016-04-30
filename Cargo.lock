@@ -1,5 +1,5 @@
 [root]
-name = "log_archiving_capnp"
+name = "log_archive"
 version = "0.1.0"
 dependencies = [
  "capnp 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",

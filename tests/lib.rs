@@ -4,7 +4,18 @@ extern crate capnp;
 extern crate rand;
 extern crate chrono;
 
+use std::fs::File;
+use capnp::message::Builder;
+use capnp::serialize_packed;
+
 use rand::Rng;
+use chrono::duration::Duration;
+use chrono::datetime::DateTime;
+use chrono::offset::utc::UTC;
+use chrono::Timelike;
+
+use logformat::schema_capnp::{logblock, logline};
+
 
 pub fn random_ip() -> String {
   let mut rng = rand::thread_rng();
@@ -15,11 +26,6 @@ pub fn random_ip() -> String {
   let d: u32 = rng.gen_range(2,255);
   format!("{}.{}.{}.{}", a,b,c,d)
 }
-
-use chrono::duration::Duration;
-use chrono::datetime::DateTime;
-use chrono::offset::utc::UTC;
-use chrono::Timelike;
 
 static APACHE_FORMAT:&'static str = "%d/%b/%Y:%H:%M:%S %z";
 static REFERERS: &'static [&'static str] = &["-","http://www.casualcyclist.com","http://bestcyclingreviews.com/top_online_shops","http://bleater.com","http://searchengine.com"];
@@ -67,7 +73,6 @@ pub fn line_generator(event_count: u32) -> Vec<(DateTime<UTC>, String)> {
 }
 
 
-use logformat::schema_capnp::{logblock, logline};
 pub fn append_line(ts: DateTime<UTC>, content: &str, lline: &mut logline::Builder)  {
   let second_in_micro = ts.timestamp() as u64 * 1000000;
   let us: u64 = (ts.nanosecond() / 1000) as u64; 
@@ -83,12 +88,6 @@ pub fn append_line(ts: DateTime<UTC>, content: &str, lline: &mut logline::Builde
     let _ = kv.borrow().get(0).set_value(content);
   }
 }
-
-
-use capnp::message::Builder;
-use capnp::serialize_packed;
-
-use std::fs::File;
 
 
 pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32 )  {
@@ -108,47 +107,6 @@ pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32 )  {
   let _ = serialize_packed::write_message(&mut f, &message);
 }
 
-use std::io::{self, BufReader};
-
-// We derive `Debug` because all types should probably derive `Debug`.
-#[derive(Debug)]
-pub enum ReadError {
-    Io(io::Error),
-    Proto(capnp::Error),
-}
-
-impl From<io::Error> for ReadError {
-    fn from(err: io::Error) -> ReadError {
-        ReadError::Io(err)
-    }
-}
-
-impl From<capnp::Error> for ReadError {
-    fn from(err: capnp::Error) -> ReadError {
-        ReadError::Proto(err)
-    }
-}
-
-pub fn read_log_block(file_name: &str) -> Result<(), ReadError> {
-  let f = try!(File::open(file_name));
-  let mut bufreader = BufReader::new(f); 
-  let message_reader = try!(serialize_packed::read_message(
-      &mut bufreader,
-      ::capnp::message::ReaderOptions::new()));
-  let logblock = try!(message_reader.get_root::<logblock::Reader>());
-
-  for (ix, line_reader) in try!(logblock.get_entries()).iter().enumerate() {
-    let t = line_reader.get_time();
-    let f = line_reader.get_facility().unwrap();
-
-    println!("{:?} {:}",t, f);
-  }
-
-
-
-  Ok(())
-}
-
 
 
 
@@ -158,13 +116,8 @@ mod tests {
   
   #[test]
   fn it_works() {
-    for x in 0..1 {
+    for x in 0..100 {
       build_log_block("sample", x, 5000);
-    }
-
-    match read_log_block("sample0.capnp") {
-      Err(e) => println!("{:?}", e),
-      Ok(_) => {}
     }
   }
 }
