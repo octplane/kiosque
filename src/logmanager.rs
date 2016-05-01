@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader};
+use std::thread;
+use std::thread::{Thread, JoinHandle};
+use std::sync::mpsc::{channel, Sender, Receiver};
 
 use capnp;
 use capnp::serialize_packed;
@@ -36,13 +39,27 @@ impl LogFile {
       .map( |l| l.len() )
       .fold(0, |acc, x| acc + x)
   }
+  pub fn find(&self, field: &str, needle: &str) -> bool {
+    let matching_lines = self.lines.iter().filter( |line| {
+      if let Some(haystack) = line.get(field) {
+        match haystack.find(needle) {
+          Some(_) => true,
+          _ => false
+        }
+      } else {
+        false
+      }
+    });
+    matching_lines.count() > 0
+  }
 }
 
-pub struct LogManager {
-  pub content: Vec<LogFile>
+pub struct LogFileThread {
+  pub content: Vec<LogFile>,
 }
 
-impl LogManager {
+
+impl LogFileThread {
   pub fn len(&self) -> usize {
     self
       .content
@@ -50,22 +67,74 @@ impl LogManager {
       .map( |lf| lf.len() )
       .fold(0, |acc, x| acc + x)
   }
+  pub fn find(&self, field: &str, needle: &str) -> bool {
+    self
+      .content
+      .iter()
+      .filter( |lf| lf.find(field, needle))
+      .count() > 0
+  }
+}
+
+#[derive(Debug)]
+pub enum ManagerMessages {
+  ReadFile(String),
+  FindNeedle(String),
+  Shutdown(String)
+}
+
+pub struct LogManager {
+  pub threads: Vec<JoinHandle<()>>,
+  pub tx_chans: Vec<Sender<ManagerMessages>>
+}
+
+impl LogManager {
+  pub fn shutdown(self) {
+    for t in self.threads {
+      let _ = t.join();
+    }
+  }
 }
 
 pub fn read_files(files: Vec<String>) -> LogManager {
-  let content = files.iter().map( |file| {
-    match read_log_block(file) {
-      Ok(c) => c,
-      Err(e) => panic!("Error: {:?}", e)
-    }
+  let mut threads: Vec<JoinHandle<()>> = Vec::new();
+  let chans: Vec<Sender<ManagerMessages>> = (0..4).map( |ix| {
+    let (manager_to_thread_tx, manager_to_thread_rx) = channel::<ManagerMessages>();
+    let t = thread::spawn(move|| {
+      println!("Thread {} starting.", ix);
+      while true {
+        match manager_to_thread_rx.recv() {
+          Ok(ManagerMessages::ReadFile(file)) =>
+          {
+            let _ = read_log_block(&file);
+            ()
+          }
+          Ok(msg) => println!("Got message to {:?}", msg),
+          Err(e) => println!("Will soon die: {}", e)
+        }
+      }
+    });
+    threads.push(t);
+    manager_to_thread_tx
   }).collect();
-  LogManager{content:content}
+
+
+  for (ix, file) in files.iter().enumerate() {
+    println!("Sending {} to thread {}", file, ix % chans.len());
+    chans[ix % chans.len()]
+      .send(ManagerMessages::ReadFile(file.clone()))
+      .unwrap();
+  }
+
+  LogManager{
+    threads: threads,
+    tx_chans: chans
+  }
 }
 
 
 pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
   let f = try!(File::open(file_name));
-  println!("{}", file_name);
   let mut bufreader = BufReader::new(f); 
   let message_reader = try!(serialize_packed::read_message(
       &mut bufreader,
@@ -91,6 +160,7 @@ pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
     }
   }).collect();
 
+  println!("Read {}", file_name);
   Ok(LogFile{lines:lines})
 }
 

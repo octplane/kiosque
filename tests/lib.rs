@@ -1,8 +1,11 @@
+#![feature(test)]
+
 extern crate log_archive;
 extern crate logformat;
 extern crate capnp;
 extern crate rand;
 extern crate chrono;
+extern crate test;
 
 use std::fs::File;
 use capnp::message::Builder;
@@ -113,11 +116,24 @@ pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32 )  {
 #[cfg(test)]
 mod tests {
   use super::*;
-  
+  use test::Bencher;
+  use log_archive::logmanager::{read_files};
+
+
   #[test]
-  fn it_works() {
-    for x in 0..100 {
+  fn generate_10_files() {
+    for x in 0..10 {
       build_log_block("sample", x, 5000);
     }
+  }
+
+  #[bench]
+  fn search_things(b: &mut Bencher) {
+    let files = (0..100).map( |ix| 
+                            format!("sample{}.capnp", ix))
+      .collect();
+    let lm = read_files(files);
+
+    b.iter(|| lm.find("stdout", "a"));
   }
 }

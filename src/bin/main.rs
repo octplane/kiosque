@@ -4,10 +4,13 @@ use log_archive::logmanager::{read_files};
 
 
 fn main() {
-    let files = (0..3).map( |ix| format!("sample{}.capnp", ix)).collect();
+    let files = (0..3).map( |ix| 
+                            format!("sample{}.capnp", ix))
+      .collect();
     let lm = read_files(files);
-
-    println!("Len is {}", lm.len());
+    //println!("{}", lm.find("stdout", "GET"));
+    //println!("Len is {}", lm.len());
+    lm.shutdown();
 
 
 }
