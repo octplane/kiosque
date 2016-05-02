@@ -134,9 +134,9 @@ mod tests {
      .collect();
    let mut lm = new_from_files(8, files);
  
-     let matches = lm.find("stdout", "GET");
+     let matches = lm.find("stdout", "GET", true);
      assert!(matches);
-     let matches = lm.find("stdout", "missing string in data");
+     let matches = lm.find("stdout", "missing string in data", true);
      assert!(!matches);
      lm.shutdown();
    }

@@ -8,6 +8,9 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use capnp;
 use capnp::serialize_packed;
 use logformat::schema_capnp::{logblock};
+
+use regex::Regex;
+
 // We derive `Debug` because all types should probably derive `Debug`.
 #[derive(Debug)]
 pub enum ReadError {
@@ -52,6 +55,18 @@ impl LogFile {
     });
     matching_lines.count() > 0
   }
+
+  pub fn rfind( &self, field: &str, needle: &str) -> bool {
+    let re = Regex::new(needle).unwrap();
+    let matching_lines = self.lines.iter().filter( |line| {
+      if let Some(haystack) = line.get(field) {
+        re.is_match(haystack) 
+      } else {
+        false
+      }
+    });
+    matching_lines.count() > 0
+  }
 }
 
 pub struct LogFileThread {
@@ -75,6 +90,13 @@ impl LogFileThread {
       .filter( |lf| lf.find(field, needle))
       .count() > 0
   }
+  pub fn rfind(&self, field: &str, needle: &str) -> bool {
+    self
+      .content
+      .iter()
+      .filter( |lf| lf.rfind(field, needle))
+      .count() > 0
+  }
   pub fn run(&mut self, rx: Receiver<ManagerMessages>, tx: Sender<ClientMessages>) {
     println!("{}: Thread starting.", self.name);
     loop {
@@ -89,8 +111,13 @@ impl LogFileThread {
             Err(e) => println!("{}: Something went wrong while reading {}: {:?}", self.name, file,  e)
           }
         },
-        Ok(ManagerMessages::FindNeedle(field, needle)) => {
-          let found = self.find(&field, &needle);
+        Ok(ManagerMessages::FindNeedle(field, needle, r_based)) => {
+          let found = if r_based {
+            self.rfind(&field, &needle)
+          } else {
+            self.find(&field, &needle)
+          };
+
           let _ = if found {
             tx.send(ClientMessages::FoundNeedle(self.name.clone(), field, needle))
           } else {
@@ -111,7 +138,7 @@ impl LogFileThread {
 #[derive(Debug)]
 pub enum ManagerMessages {
   ReadFile(String),
-  FindNeedle(String, String),
+  FindNeedle(String, String, bool),
   Shutdown(String)
 }
 
@@ -138,12 +165,12 @@ impl LogManager {
     }
     println!("Shutdowning.");
   }
-  pub fn find(&mut self, field: &str, needle: &str) -> bool {
+  pub fn find(&mut self, field: &str, needle: &str, re_based: bool) -> bool {
     for chan in &self.tx_chans {
       chan
         .send(ManagerMessages::FindNeedle(
             field.into(),
-            needle.into()))
+            needle.into(), re_based))
         .unwrap();
     }
     let mut count = 0;

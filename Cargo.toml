@@ -13,7 +13,8 @@ path = "src/lib.rs"
 capnp = "*"
 rand = "*"
 chrono = "0.2"
-timeit = "0.1.2"
+hprof = "*"
+regex = "*"
 
 
 [dependencies.logformat]
