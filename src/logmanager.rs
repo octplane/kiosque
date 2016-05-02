@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::thread;
-use std::thread::{Thread, JoinHandle};
+use std::thread::{JoinHandle};
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use capnp;
@@ -55,6 +55,7 @@ impl LogFile {
 }
 
 pub struct LogFileThread {
+  pub name: String,
   pub content: Vec<LogFile>,
 }
 
@@ -75,26 +76,32 @@ impl LogFileThread {
       .count() > 0
   }
   pub fn run(&mut self, rx: Receiver<ManagerMessages>, tx: Sender<ClientMessages>) {
-    println!("Thread starting.");
+    println!("{}: Thread starting.", self.name);
     loop {
       match rx.recv() {
         Ok(ManagerMessages::ReadFile(file)) =>
         {
           match read_log_block(&file) {
             Ok(lf) => {
+              println!("{}: Read file {}", self.name, file);
               self.content.push(lf)
             },
-            Err(e) => println!("Something went wrong while reading {}: {:?}", file,  e)
+            Err(e) => println!("{}: Something went wrong while reading {}: {:?}", self.name, file,  e)
           }
         },
         Ok(ManagerMessages::FindNeedle(field, needle)) => {
-          println!("needle: {} among {} files", self.find(&field, &needle), self.content.len());
+          let found = self.find(&field, &needle);
+          let _ = if found {
+            tx.send(ClientMessages::FoundNeedle(self.name.clone(), field, needle))
+          } else {
+            tx.send(ClientMessages::NotFound(self.name.clone(), field, needle))
+          };
         },
         Ok(ManagerMessages::Shutdown(msg)) => {
-          println!("Will shutdown because {}.", msg);
+          println!("{}: Will shutdown because {}.", self.name, msg);
           break;
         },
-        Err(e) => println!("Will soon die: {}", e)
+        Err(e) => println!("{}: Will soon die: {}", self.name, e)
       }
     }
   }
@@ -109,20 +116,26 @@ pub enum ManagerMessages {
 
 #[derive(Debug)]
 pub enum ClientMessages {
-  FoundNeedle(String, String)
+  FoundNeedle(String, String, String),
+  NotFound(String, String, String),
 }
 
 pub struct LogManager {
   pub threads: Vec<JoinHandle<()>>,
   pub tx_chans: Vec<Sender<ManagerMessages>>,
-  pub rx_chan: Receiver<ClientMessages>
+  pub rx_chans: Vec<Receiver<ClientMessages>>
 }
 
 impl LogManager {
   pub fn shutdown(self) {
+    for chan in &self.tx_chans {
+      chan
+        .send(ManagerMessages::Shutdown("shutdown called".into())).unwrap();
+    }
     for t in self.threads {
       let _ = t.join();
     }
+    println!("Shutdowning.");
   }
   pub fn find(&mut self, field: &str, needle: &str) -> bool {
     for chan in &self.tx_chans {
@@ -132,38 +145,56 @@ impl LogManager {
             needle.into()))
         .unwrap();
     }
+    let mut count = 0;
+    for c in &self.rx_chans {
+      match c.recv() {
+        Ok(ClientMessages::FoundNeedle(_, _, _)) => count = count + 1,
+        Ok(ClientMessages::NotFound(t, _, _)) => println!("Miss from {}",t),
+        Err(e) => println!("Something went wront on the pipe: {}", e)
+      }
+    }
+    println!("Found is {}", count);
+
     true
   }
 }
 
-pub fn LogManager(thread_count: u32, files: Vec<String>) -> LogManager {
-  let mut threads: Vec<JoinHandle<()>> = Vec::new();
-  let (thread_to_manager_tx, thread_to_manager_rx) = channel::<ClientMessages>();
+pub fn new_from_files(thread_count: u32, files: Vec<String>) -> LogManager {
 
-  let chans: Vec<Sender<ManagerMessages>> = (0..thread_count).map( |ix| {
+  let data = (0..thread_count).map( |ix| {
     let (manager_to_thread_tx, manager_to_thread_rx) = channel::<ManagerMessages>();
-    let tmtx = thread_to_manager_tx.clone();
+    let (thread_to_manager_tx, thread_to_manager_rx) = channel::<ClientMessages>();
 
     let t = thread::spawn(move|| {
-      let mut l = LogFileThread{content: vec![]};
-      l.run(manager_to_thread_rx, tmtx);
+      let mut l = LogFileThread {
+        name: format!("file-thread-{}", ix),
+        content: vec![]};
+      l.run(manager_to_thread_rx, thread_to_manager_tx);
     });
-    threads.push(t);
-    manager_to_thread_tx
-  }).collect();
+    (t, manager_to_thread_tx, thread_to_manager_rx)
+  });
 
+  let mut tx_chans = vec![];
+  let mut rx_chans = vec![]; 
+  let mut threads = vec![];
+
+  for (t,tx,rx) in data {
+    threads.push(t);
+    tx_chans.push(tx);
+    rx_chans.push(rx);
+  }
 
   for (ix, file) in files.iter().enumerate() {
-    println!("Sending {} to thread {}", file, ix % chans.len());
-    chans[ix % chans.len()]
+    let t_index = ix % tx_chans.len();
+    tx_chans[t_index]
       .send(ManagerMessages::ReadFile(file.clone()))
       .unwrap();
   }
 
   LogManager{
     threads: threads,
-    tx_chans: chans,
-    rx_chan: thread_to_manager_rx
+    tx_chans: tx_chans,
+    rx_chans: rx_chans
   }
 }
 
@@ -178,8 +209,8 @@ pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
   let entries = try!(logblock.get_entries());
 
   let lines = entries.iter().map(|line_reader| {
-    let t = line_reader.get_time();
-    let f = line_reader.get_facility().unwrap();
+    // let t = line_reader.get_time();
+    // let f = line_reader.get_facility().unwrap();
 
     if let Ok(facets) = line_reader.get_facets() {
       if let Ok(entries) = facets.get_entries() {
@@ -195,7 +226,6 @@ pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
     }
   }).collect();
 
-  println!("Read {}", file_name);
   Ok(LogFile{lines:lines})
 }
 
