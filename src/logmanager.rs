@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, Read};
 use std::thread;
+use std::borrow::Borrow;
 use std::thread::{JoinHandle};
 use std::sync::mpsc::{channel, Sender, Receiver};
 
@@ -31,41 +31,57 @@ impl From<capnp::Error> for ReadError {
 }
 
 pub struct LogFile {
-  pub lines: Vec<HashMap<String,String>>
+  pub content: Vec<u8>
 }
 
 impl LogFile {
-  pub fn len(&self) -> usize {
-    self
-      .lines
-      .iter()
-      .map( |l| l.len() )
-      .fold(0, |acc, x| acc + x)
-  }
-  pub fn find(&self, field: &str, needle: &str) -> bool {
-    let matching_lines = self.lines.iter().filter( |line| {
-      if let Some(haystack) = line.get(field) {
-        match haystack.find(needle) {
-          Some(_) => true,
-          _ => false
+   pub fn gen_find<F>(&self, field: &str, needle: &str, testf: F) -> bool
+    where F: Fn(&str, &str) -> bool {
+      if let Ok(message_reader) = serialize_packed::read_message(&mut self.content.borrow(),
+      ::capnp::message::ReaderOptions::new()) {
+        if let Ok(logblock) = message_reader.get_root::<logblock::Reader>() {
+          if let Ok(entries) = logblock.get_entries() {
+            entries.iter().any(|line_reader| {
+              if let Ok(facets) = line_reader.get_facets() {
+                if let Ok(entries) = facets.get_entries() {
+                  entries.iter().any(|ent| {
+                    let k = ent.get_key().ok().unwrap();
+                    if k == field {
+                      let v = ent.get_value().ok().unwrap();
+                      testf(needle, v)
+                    } else {
+                      false
+                    }
+                  })
+                } else {
+                  false
+                }
+              } else {
+                false
+              }
+            })
+          } else {
+            false
+          }
+        } else {
+          false
         }
       } else {
         false
       }
-    });
-    matching_lines.count() > 0
-  }
+    }
 
+  pub fn find(&self, field: &str, needle: &str) -> bool {
+    self.gen_find(field, needle,  |needle, haystack| {
+      match haystack.find(needle) {
+        Some(_) => true,
+        _ => false
+      }
+    })
+  }
   pub fn rfind( &self, field: &str, needle: &str) -> bool {
     let re = Regex::new(needle).unwrap();
-    let matching_lines = self.lines.iter().filter( |line| {
-      if let Some(haystack) = line.get(field) {
-        re.is_match(haystack) 
-      } else {
-        false
-      }
-    });
-    matching_lines.count() > 0
+    self.gen_find(field, needle,|_, haystack| re.is_match(haystack) )
   }
 }
 
@@ -76,13 +92,6 @@ pub struct LogFileThread {
 
 
 impl LogFileThread {
-  pub fn len(&self) -> usize {
-    self
-      .content
-      .iter()
-      .map( |lf| lf.len() )
-      .fold(0, |acc, x| acc + x)
-  }
   pub fn find(&self, field: &str, needle: &str) -> bool {
     self
       .content
@@ -131,7 +140,7 @@ impl LogFileThread {
         Err(e) => println!("{}: Error while recv(): {}", self.name, e)
       }
     }
-  println!("{}: Thread stopping", self.name);
+    println!("{}: Thread stopping", self.name);
   }
 }
 
@@ -227,33 +236,11 @@ pub fn new_from_files(thread_count: u32, files: Vec<String>) -> LogManager {
 
 
 pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
-  let f = try!(File::open(file_name));
-  let mut bufreader = BufReader::new(f); 
-  let message_reader = try!(serialize_packed::read_message(
-      &mut bufreader,
-      ::capnp::message::ReaderOptions::new()));
-  let logblock = try!(message_reader.get_root::<logblock::Reader>());
-  let entries = try!(logblock.get_entries());
+  let mut f = try!(File::open(file_name));
+  let mut buffer = Vec::new();
 
-  let lines = entries.iter().map(|line_reader| {
-    // let t = line_reader.get_time();
-    // let f = line_reader.get_facility().unwrap();
-
-    if let Ok(facets) = line_reader.get_facets() {
-      if let Ok(entries) = facets.get_entries() {
-        entries.iter().map(|ent| {
-          (ent.get_key().ok().unwrap().to_owned(),
-          ent.get_value().ok().unwrap().to_owned())
-        }).collect::<HashMap<String,String>>()
-      } else {
-        HashMap::<String,String>::new()
-      }
-    } else {
-      HashMap::<String,String>::new()
-    }
-  }).collect();
-
-  Ok(LogFile{lines:lines})
+  try!(f.read_to_end(&mut buffer));
+  Ok(LogFile{content: buffer})
 }
 
 

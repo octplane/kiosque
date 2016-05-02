@@ -1,3 +1,5 @@
+#![feature(alloc_system)]
+
 extern crate capnp;
 extern crate logformat;
 extern crate chrono;
