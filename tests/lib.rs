@@ -117,23 +117,27 @@ pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32 )  {
 mod tests {
   use super::*;
   use test::Bencher;
-  use log_archive::logmanager::LogManager;
+  use log_archive::logmanager::new_from_files;
 
 
-  #[test]
-  fn generate_10_files() {
-    for x in 0..10 {
-      build_log_block("sample", x, 5000);
-    }
-  }
+//  #[test]
+//  fn generate_10_files() {
+//    for x in 0..10 {
+//      build_log_block("sample", x, 5000);
+//    }
+//  }
 
-  #[bench]
-  fn search_things(b: &mut Bencher) {
-    let files = (0..100).map( |ix| 
-                            format!("sample{}.capnp", ix))
-      .collect();
-    let mut lm = LogManager(4, files);
-
-    b.iter(|| lm.find("stdout", "a"));
-  }
+   #[test]
+   fn search_things() {
+     let files = (0..50).map( |ix| 
+                             format!("sample{}.capnp", ix))
+       .collect();
+     let mut lm = new_from_files(8, files);
+ 
+     let matches = lm.find("stdout", "GET");
+     assert!(matches);
+     let matches = lm.find("stdout", "missing string in data");
+     assert!(!matches);
+     lm.shutdown();
+   }
 }

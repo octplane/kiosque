@@ -101,9 +101,10 @@ impl LogFileThread {
           println!("{}: Will shutdown because {}.", self.name, msg);
           break;
         },
-        Err(e) => println!("{}: Will soon die: {}", self.name, e)
+        Err(e) => println!("{}: Error while recv(): {}", self.name, e)
       }
     }
+  println!("{}: Thread stopping", self.name);
   }
 }
 
@@ -154,8 +155,7 @@ impl LogManager {
       }
     }
     println!("Found is {}", count);
-
-    true
+    count == self.rx_chans.len()
   }
 }
 
