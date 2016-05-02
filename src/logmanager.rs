@@ -11,20 +11,20 @@ use logformat::schema_capnp::{logblock};
 // We derive `Debug` because all types should probably derive `Debug`.
 #[derive(Debug)]
 pub enum ReadError {
-    Io(io::Error),
-    Proto(capnp::Error),
+  Io(io::Error),
+  Proto(capnp::Error),
 }
 
 impl From<io::Error> for ReadError {
-    fn from(err: io::Error) -> ReadError {
-        ReadError::Io(err)
-    }
+  fn from(err: io::Error) -> ReadError {
+    ReadError::Io(err)
+  }
 }
 
 impl From<capnp::Error> for ReadError {
-    fn from(err: capnp::Error) -> ReadError {
-        ReadError::Proto(err)
-    }
+  fn from(err: capnp::Error) -> ReadError {
+    ReadError::Proto(err)
+  }
 }
 
 pub struct LogFile {
@@ -74,18 +74,48 @@ impl LogFileThread {
       .filter( |lf| lf.find(field, needle))
       .count() > 0
   }
+  pub fn run(&mut self, rx: Receiver<ManagerMessages>, tx: Sender<ClientMessages>) {
+    println!("Thread starting.");
+    loop {
+      match rx.recv() {
+        Ok(ManagerMessages::ReadFile(file)) =>
+        {
+          match read_log_block(&file) {
+            Ok(lf) => {
+              self.content.push(lf)
+            },
+            Err(e) => println!("Something went wrong while reading {}: {:?}", file,  e)
+          }
+        },
+        Ok(ManagerMessages::FindNeedle(field, needle)) => {
+          println!("needle: {} among {} files", self.find(&field, &needle), self.content.len());
+        },
+        Ok(ManagerMessages::Shutdown(msg)) => {
+          println!("Will shutdown because {}.", msg);
+          break;
+        },
+        Err(e) => println!("Will soon die: {}", e)
+      }
+    }
+  }
 }
 
 #[derive(Debug)]
 pub enum ManagerMessages {
   ReadFile(String),
-  FindNeedle(String),
+  FindNeedle(String, String),
   Shutdown(String)
+}
+
+#[derive(Debug)]
+pub enum ClientMessages {
+  FoundNeedle(String, String)
 }
 
 pub struct LogManager {
   pub threads: Vec<JoinHandle<()>>,
-  pub tx_chans: Vec<Sender<ManagerMessages>>
+  pub tx_chans: Vec<Sender<ManagerMessages>>,
+  pub rx_chan: Receiver<ClientMessages>
 }
 
 impl LogManager {
@@ -94,25 +124,29 @@ impl LogManager {
       let _ = t.join();
     }
   }
+  pub fn find(&mut self, field: &str, needle: &str) -> bool {
+    for chan in &self.tx_chans {
+      chan
+        .send(ManagerMessages::FindNeedle(
+            field.into(),
+            needle.into()))
+        .unwrap();
+    }
+    true
+  }
 }
 
-pub fn read_files(files: Vec<String>) -> LogManager {
+pub fn LogManager(thread_count: u32, files: Vec<String>) -> LogManager {
   let mut threads: Vec<JoinHandle<()>> = Vec::new();
-  let chans: Vec<Sender<ManagerMessages>> = (0..4).map( |ix| {
+  let (thread_to_manager_tx, thread_to_manager_rx) = channel::<ClientMessages>();
+
+  let chans: Vec<Sender<ManagerMessages>> = (0..thread_count).map( |ix| {
     let (manager_to_thread_tx, manager_to_thread_rx) = channel::<ManagerMessages>();
+    let tmtx = thread_to_manager_tx.clone();
+
     let t = thread::spawn(move|| {
-      println!("Thread {} starting.", ix);
-      while true {
-        match manager_to_thread_rx.recv() {
-          Ok(ManagerMessages::ReadFile(file)) =>
-          {
-            let _ = read_log_block(&file);
-            ()
-          }
-          Ok(msg) => println!("Got message to {:?}", msg),
-          Err(e) => println!("Will soon die: {}", e)
-        }
-      }
+      let mut l = LogFileThread{content: vec![]};
+      l.run(manager_to_thread_rx, tmtx);
     });
     threads.push(t);
     manager_to_thread_tx
@@ -128,7 +162,8 @@ pub fn read_files(files: Vec<String>) -> LogManager {
 
   LogManager{
     threads: threads,
-    tx_chans: chans
+    tx_chans: chans,
+    rx_chan: thread_to_manager_rx
   }
 }
 
@@ -141,7 +176,7 @@ pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
       ::capnp::message::ReaderOptions::new()));
   let logblock = try!(message_reader.get_root::<logblock::Reader>());
   let entries = try!(logblock.get_entries());
-  
+
   let lines = entries.iter().map(|line_reader| {
     let t = line_reader.get_time();
     let f = line_reader.get_facility().unwrap();
@@ -156,7 +191,7 @@ pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
         HashMap::<String,String>::new()
       }
     } else {
-        HashMap::<String,String>::new()
+      HashMap::<String,String>::new()
     }
   }).collect();
 

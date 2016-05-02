@@ -117,7 +117,7 @@ pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32 )  {
 mod tests {
   use super::*;
   use test::Bencher;
-  use log_archive::logmanager::{read_files};
+  use log_archive::logmanager::LogManager;
 
 
   #[test]
@@ -132,7 +132,7 @@ mod tests {
     let files = (0..100).map( |ix| 
                             format!("sample{}.capnp", ix))
       .collect();
-    let lm = read_files(files);
+    let mut lm = LogManager(4, files);
 
     b.iter(|| lm.find("stdout", "a"));
   }
