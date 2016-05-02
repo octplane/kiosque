@@ -13,7 +13,7 @@ fn main() {
     let files = (0..1000).map( |ix| 
       format!("data/sample{}.capnp", ix))
       .collect();
-    let mut lm = new_from_files(10, files);
+    let mut lm = new_from_files(8, files);
   for _ in 1..2
   {
     let d = hprof::enter("Simple search");
