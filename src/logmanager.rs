@@ -165,12 +165,12 @@ pub fn new_from_files(thread_count: u32, files: Vec<String>) -> LogManager {
     let (manager_to_thread_tx, manager_to_thread_rx) = channel::<ManagerMessages>();
     let (thread_to_manager_tx, thread_to_manager_rx) = channel::<ClientMessages>();
 
-    let t = thread::spawn(move|| {
+    let t =  thread::Builder::new().name(format!("file-thread-{}", ix)).spawn(move|| {
       let mut l = LogFileThread {
         name: format!("file-thread-{}", ix),
         content: vec![]};
       l.run(manager_to_thread_rx, thread_to_manager_tx);
-    });
+    }).ok().unwrap();
     (t, manager_to_thread_tx, thread_to_manager_rx)
   });
 
