@@ -7,6 +7,14 @@ authors = ["Pierre Baillet <pierre@baillet.name>"]
 name = "log_archive"
 path = "src/lib.rs"
 
+[[bin]]
+name = "splunk_server"
+path = "src/bin/splunk_server.rs"
+
+[[bin]]
+name = "kiosque"
+path = "src/bin/main.rs"
+
 
 [dependencies]
 
@@ -15,7 +23,14 @@ rand = "*"
 chrono = "0.2"
 hprof = "*"
 regex = "*"
+openssl = "*"
 
+hyper = "0.8.1"
+rustc-serialize = "*"
+
+[dependencies.nickel]
+version = "0.8.0"
+features = ["ssl"]
 
 [dependencies.logformat]
 path = "./logformat"
