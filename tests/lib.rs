@@ -120,24 +120,23 @@ mod tests {
   use log_archive::logmanager::new_from_files;
 
 
-// #[test]
-// fn generate_10_files() {
-//   for x in 1..10 {
-//     build_log_block("sample", x, 5000);
-//   }
-// }
+  #[test]
+  fn generate_10_files() {
+    for x in 1..20 {
+      build_log_block("sample", x, 50000);
+    }
+  }
 
- #[test]
- fn search_things() {
-   let files = (0..50).map( |ix| 
-                           format!("data/sample{}.capnp", ix))
-     .collect();
-   let mut lm = new_from_files(8, files);
- 
-     let matches = lm.find("stdout", "GET", true);
-     assert!(matches);
-     let matches = lm.find("stdout", "missing string in data", true);
-     assert!(!matches);
-     lm.shutdown();
-   }
+  fn search_things() {
+    let files = (0..20).map( |ix| 
+                             format!("data/sample{}.capnp", ix))
+      .collect();
+    let mut lm = new_from_files(8, files);
+
+    let matches = lm.find("stdout", "GET", true);
+    assert!(matches);
+    let matches = lm.find("stdout", "missing string in data", true);
+    assert!(!matches);
+    lm.shutdown();
+  }
 }
