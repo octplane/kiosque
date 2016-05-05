@@ -1,3 +1,16 @@
+## Splunk server for docker logging
+
+```
+cargo run splunk_server
+```
+
+```
+docker run -it -P --log-driver=splunk --log-opt splunk-token=TOKEN --log-opt splunk-url=https://10.0.2.2:6767/ --log-opt splunk-insecureskipverify=true  gogs/gogs
+```
+
+
+## Log manipulation Engine
+
 # After ec90190dedc7275710bbf41408147d6bd142809f
 
 Still 8 worker threads

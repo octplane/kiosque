@@ -9,6 +9,7 @@ struct Map(Key, Value) {
 }
 
 struct Logline {
+  # This is time since EPOCH in µs (1.10e-6 s)
   time @0 :UInt64;
   facility @1 :Text;
   hostname @2 :Text;
