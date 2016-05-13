@@ -98,11 +98,11 @@ fn test_multispace_and_comment() {
 
 named!(declaration <&str, &str>, 
        chain!(
-         multispace?                 ~
+         multispace_and_comment?     ~
          symbol : object_symbol_name ~
-         multispace?                 ~
+         multispace_and_comment?     ~
          tag_s!("{")                 ~
-         multispace?                 ~
+         multispace_and_comment?     ~
          tag_s!("}")
          ,
          || { symbol }));
@@ -112,20 +112,29 @@ named!(declaration <&str, &str>,
 fn test_symbol() {
   let t = " this_is_a_valid_symbol ";
   let s = object_symbol_name(t);
-  println!("{:?}", s);
+  assert!(s == Done(" ", "this_is_a_valid_symbol"));
 
   let t1 = " this_is_a_valid_symbol {";
   let s1 = object_symbol_name(t1);
-  println!("{:?}", s1);
+  assert!(s1 == Done(" {", "this_is_a_valid_symbol"));
 }
 
 #[test]
-fn test_object_1() {
-  let t = " 💩 { \n }";
-  if let Done(r,p) = declaration(t) {
-    assert_eq!(p, "💩");
-  } else {
-    assert!(false, "declaration dit not parse correctly");
+fn test_declaration() {
+  let testable = vec![
+    " 💩 { \n }",
+    " 💩  # coucou\n{ \n }",
+    " 💩 { # 🍓 \n }",
+    " 💩 { \n # coucou \n  }",
+  ];
+  for t in testable {
+    let res = declaration(t);
+    if let Done(r,p) = res {
+      print!("{} => R{:?} P:{}",t, r, p); 
+      assert!(true);
+    } else {
+      assert!(false, format!("Failed to parse correctly \"{}\": {:?}", t, res));
+    }
   }
 }
 
