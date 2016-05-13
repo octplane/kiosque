@@ -13,7 +13,7 @@ path = "src/bin/splunk_server.rs"
 
 [[bin]]
 name = "kiosque"
-path = "src/bin/main.rs"
+path = "src/bin/kiosque.rs"
 
 
 [dependencies]
@@ -27,6 +27,10 @@ openssl = "*"
 
 hyper = "0.8.1"
 rustc-serialize = "*"
+
+nom = "^1.2.3"
+
+docopt = "*"
 
 [dependencies.nickel]
 version = "0.8.0"

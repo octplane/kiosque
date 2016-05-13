@@ -127,8 +127,9 @@ mod tests {
     }
   }
 
+  #[test]
   fn search_things() {
-    let files = (0..20).map( |ix| 
+    let files = (1..20).map( |ix| 
                              format!("data/sample{}.capnp", ix))
       .collect();
     let mut lm = new_from_files(8, files);
