@@ -118,17 +118,21 @@ fn test_multispace_content() {
     "\n#\n# \n\t#\n"]);
 }
 
-
 named!(declaration <&str, &str>, 
        chain!(
-         multispace_and_comment?     ~
-         symbol : object_symbol_name ~
-         multispace_and_comment?     ~
-         tag_s!("{")?                 ~
-         multispace_and_comment?     ~
-         tag_s!("}")?
-         ,
-         || { symbol }));
+         symbol: object_symbol_name   ~
+         alt!(
+          multispace_and_comment      |
+          chain!(
+            tag_s!("{")               ~
+            multispace_and_comment    ~
+            tag_s!("}"),
+          || { "" }
+          )
+        )
+        ,
+        || { symbol })
+);
 
 #[test]
 fn test_declarations() {
@@ -136,6 +140,7 @@ fn test_declarations() {
     "Declarations",
     declaration,
     [
+    "empty_declaration\n",
     "💩 {}",
     "         💩 {}",
     " 💩 { \n }",
@@ -144,23 +149,7 @@ fn test_declarations() {
     " 💩 { \n # coucou \n  }"]);
 }
 
-named!(declaration2 <&str, &str>, 
-       chain!(
-         symbol : object_symbol_name ~
-         multispace_and_comment?     ~
-         tag_s!("{")?               
-         ,
-         || { symbol }));
 
-#[test]
-fn test_declarations2() {
-  test_gen!(
-    "Declarations 2",
-    declaration2,
-    [
-    "identifier\n"
-    ]);
-}
 // named!(comment,
 //     chain!(
 //         tag!("#")           ~
