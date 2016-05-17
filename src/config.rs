@@ -1,27 +1,25 @@
 use std::str;
 
-use nom::{IResult, multispace, eof, alphanumeric, space, not_line_ending};
+use nom::{IResult, multispace};
 use nom::IResult::*;
 
 use std::io::prelude::*;
-use std::fs::File;
-use std::collections::HashMap;
 
-named!(quoted_string <&str>,
-       chain!(
-         tag!("\"")              ~
-         qs: map_res!(
-           take_until!("\""),
-           str::from_utf8)       ~
-         tag!("\"")              ,
-         || { qs }
-         )
-      );
-
+// named!(quoted_string <&str>,
+//        chain!(
+//          tag!("\"")              ~
+//          qs: map_res!(
+//            take_until!("\""),
+//            str::from_utf8)       ~
+//          tag!("\"")              ,
+//          || { qs }
+//          )
+//       );
+// 
 // A symbol is anything between spaces, and followed by something.
 named!(object_symbol_name <&str, &str>,
        chain!(
-         foo: multispace? ~
+         multispace? ~
          symbol: alt!(
            take_until_s!(" ")   |
            take_until_s!("\t")   |
@@ -34,30 +32,20 @@ named!(object_symbol_name <&str, &str>,
 
 
 macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
-#[test]
-  fn test() {
     $(
+      {
       let res = $fun($it);
-      if let Done(r,p) = res {
-        assert_eq!(p, $it);
+      if let Done(_,_) = res {
       } else {
         assert!(false, format!("{}: Failed to parse correctly \"{}\": {:?}", $t, $it, res));
       }
+      }
      )*
-  }
 }
 }
 
 #[test]
-fn test_symbol() {
-  let t = " this_is_a_valid_symbol ";
-  let s = object_symbol_name(t);
-  assert!(s == Done(" ", "this_is_a_valid_symbol"));
-
-  let t1 = " this_is_a_valid_symbol {";
-  let s1 = object_symbol_name(t1);
-  assert!(s1 == Done(" {", "this_is_a_valid_symbol"));
-}
+fn tests() {
 
 test_gen!(
   "Symbols",
@@ -79,6 +67,8 @@ test_gen!(
   "   # this is a sample comment",
   "   # this is a sample comment\n# with multiline things\n  \t",
   "\n#\n# \n\t#\n"]);
+
+}
 
 pub struct Node {
   pub name: String,
@@ -125,27 +115,6 @@ where T:Index<Range<usize>, Output=T>+Index<RangeFrom<usize>, Output=T>,
   Done(&input[input_length..], input)
 }
 
-#[test]
-fn test_multispace_and_comment() {
-  let testable = vec![
-    "   ",
-    "  \n  ",
-    "\t \n ",
-    "#",
-    "   # this is a sample comment",
-    "   # this is a sample comment\n# with multiline things\n  \t",
-    "\n#\n# \n\t#\n"
-  ];
-  for t in testable {
-    let res = multispace_and_comment(t);
-    if let Done(r,p) = res {
-      assert_eq!(p, t);
-    } else {
-      assert!(false, format!("Failed to parse correctly \"{}\": {:?}", t, res));
-    }
-  }
-}
-
 named!(declaration <&str, &str>, 
        chain!(
          multispace_and_comment?     ~
@@ -157,30 +126,22 @@ named!(declaration <&str, &str>,
          ,
          || { symbol }));
 
-
 #[test]
-fn test_declaration() {
-  let testable = vec![
-    "💩 \n", // a symbol must always be followed by something.
+fn test_declarations() {
+test_gen!(
+  "Declarations",
+  declaration,
+  [
+    "💩 \n", 
     "💩 {}",
     "         💩 {}",
     " 💩 { \n }",
     " 💩  # coucou\n{ \n }",
     " 💩 { # 🍓 \n }",
-    " 💩 { \n # coucou \n  }",
-  ];
-  for t in testable {
-    let res = declaration(t);
-    if let Done(r,p) = res {
-      print!("{} => R{:?} P:{}",t, r, p); 
-      assert!(true);
-    } else {
-      assert!(false, format!("Failed to parse correctly \"{}\": {:?}", t, res));
-    }
-  }
+    " 💩 { \n # coucou \n  }"]);
+
 }
 
-// 
 // named!(comment,
 //     chain!(
 //         tag!("#")           ~
