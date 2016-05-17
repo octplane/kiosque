@@ -1,17 +1,17 @@
 use configuration_items::processor::{InputProcessor, ConfigurableFilter};
 
 
-pub struct Splunk_Server {
+pub struct SplunkServer {
   name: String,
 }
 
-impl Splunk_Server {
-  pub fn new(name: String) -> Splunk_Server {
-    Splunk_Server{ name: name }
+impl SplunkServer {
+  pub fn new(name: String) -> SplunkServer {
+    SplunkServer{ name: name }
   }
 }
 
-impl ConfigurableFilter for Splunk_Server {
+impl ConfigurableFilter for SplunkServer {
   fn human_name(&self) -> &str {
     self.name.as_ref()
   }
