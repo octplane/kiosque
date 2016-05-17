@@ -22,9 +22,9 @@ named!(object_symbol_name <&str, &str>,
        chain!(
          foo: multispace? ~
          symbol: alt!(
-           take_until_s!(" ") |
-           take_until_s!("\n") |
-           take_until_s!("{") |
+           take_until_s!(" ")   |
+           take_until_s!("\n")  |
+           take_until_s!("{")   |
            take_until_s!("#")
            ),
 
@@ -84,7 +84,8 @@ fn test_multispace_and_comment() {
     "\t \n ",
     "#",
     "   # this is a sample comment",
-    "   # this is a sample comment\n# with multiline things\n  \t"
+    "   # this is a sample comment\n# with multiline things\n  \t",
+    "\n#\n# \n\t#\n"
   ];
   for t in testable {
     let res = multispace_and_comment(t);
@@ -101,9 +102,9 @@ named!(declaration <&str, &str>,
          multispace_and_comment?     ~
          symbol : object_symbol_name ~
          multispace_and_comment?     ~
-         tag_s!("{")                 ~
+         tag_s!("{")?                 ~
          multispace_and_comment?     ~
-         tag_s!("}")
+         tag_s!("}")?
          ,
          || { symbol }));
 
@@ -122,6 +123,7 @@ fn test_symbol() {
 #[test]
 fn test_declaration() {
   let testable = vec![
+    " 💩 {}",
     " 💩 { \n }",
     " 💩  # coucou\n{ \n }",
     " 💩 { # 🍓 \n }",
