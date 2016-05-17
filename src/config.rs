@@ -33,31 +33,20 @@ named!(object_symbol_name <&str, &str>,
            || { (symbol) } ));
 
 
-macro_rules! test_gen {
-  ( $( $t:tt, $fun:expr, [ $( $x:expr ),* ] ); ) => {
+macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
 #[test]
-fn test() {
-  print!("{:?}", $t);
-  $(
-      println!("{:?}", $x);
-  )*
+  fn test() {
+    $(
+      let res = $fun($it);
+      if let Done(r,p) = res {
+        assert_eq!(p, $it);
+      } else {
+        assert!(false, format!("{}: Failed to parse correctly \"{}\": {:?}", $t, $it, res));
+      }
+     )*
   }
 }
 }
-
-
-
-test_gen!(
-    "Object Symbol Name"
-    object_symbol_name,
-    [
-    "   ",
-    "  \n  ",
-    "\t \n ",
-    "#",
-    "   # this is a sample comment",
-    "   # this is a sample comment\n# with multiline things\n  \t",
-    "\n#\n# \n\t#\n"]);
 
 #[test]
 fn test_symbol() {
@@ -69,6 +58,27 @@ fn test_symbol() {
   let s1 = object_symbol_name(t1);
   assert!(s1 == Done(" {", "this_is_a_valid_symbol"));
 }
+
+test_gen!(
+  "Symbols",
+  object_symbol_name,
+  [ " this_is_valid_symbol ",
+  "this_is_a_valid_symbol {"
+  ]
+  );
+
+
+test_gen!(
+  "Multispace and comments",
+  multispace_and_comment,
+  [
+  "   ",
+  "  \n  ",
+  "\t \n ",
+  "#",
+  "   # this is a sample comment",
+  "   # this is a sample comment\n# with multiline things\n  \t",
+  "\n#\n# \n\t#\n"]);
 
 pub struct Node {
   pub name: String,
@@ -84,7 +94,7 @@ use nom::Err::Position;
 /// Detect # in multispace content and then eats until \n
 pub fn multispace_and_comment<'a, T: ?Sized>(input:&'a T) -> IResult<&'a T, &'a T>
 where T:Index<Range<usize>, Output=T>+Index<RangeFrom<usize>, Output=T>,
-      &'a T: IterIndices+InputLength {
+&'a T: IterIndices+InputLength {
 
   let input_length = input.input_len();
   if input_length == 0 {
