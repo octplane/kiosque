@@ -141,6 +141,7 @@ fn test_declarations() {
     declaration,
     [
     "empty_declaration\n",
+    "empty_declaration # with a comment\n",
     "💩 {}",
     "         💩 {}",
     " 💩 { \n }",
