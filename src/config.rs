@@ -18,11 +18,13 @@ named!(quoted_string <&str>,
          )
       );
 
+// A symbol is anything between spaces, and followed by something.
 named!(object_symbol_name <&str, &str>,
        chain!(
          foo: multispace? ~
          symbol: alt!(
            take_until_s!(" ")   |
+           take_until_s!("\t")   |
            take_until_s!("\n")  |
            take_until_s!("{")   |
            take_until_s!("#")
@@ -30,19 +32,56 @@ named!(object_symbol_name <&str, &str>,
 
            || { (symbol) } ));
 
+
+macro_rules! test_gen {
+  ( $( $t:tt, $fun:expr, [ $( $x:expr ),* ] ); ) => {
+#[test]
+fn test() {
+  print!("{:?}", $t);
+  $(
+      println!("{:?}", $x);
+  )*
+  }
+}
+}
+
+
+
+test_gen!(
+    "Object Symbol Name"
+    object_symbol_name,
+    [
+    "   ",
+    "  \n  ",
+    "\t \n ",
+    "#",
+    "   # this is a sample comment",
+    "   # this is a sample comment\n# with multiline things\n  \t",
+    "\n#\n# \n\t#\n"]);
+
+#[test]
+fn test_symbol() {
+  let t = " this_is_a_valid_symbol ";
+  let s = object_symbol_name(t);
+  assert!(s == Done(" ", "this_is_a_valid_symbol"));
+
+  let t1 = " this_is_a_valid_symbol {";
+  let s1 = object_symbol_name(t1);
+  assert!(s1 == Done(" {", "this_is_a_valid_symbol"));
+}
+
 pub struct Node {
   pub name: String,
   pub content: Vec<String>
 }
-
-/// Recognizes spaces, tabs, carriage returns and line feeds
-/// Detect # in multispace content and then eats until \n
 
 use std::ops::{Index, Range, RangeFrom};
 use nom::{InputLength, IterIndices};
 use nom::{AsChar, ErrorKind};
 use nom::Err::Position;
 
+/// Recognizes spaces, tabs, carriage returns and line feeds
+/// Detect # in multispace content and then eats until \n
 pub fn multispace_and_comment<'a, T: ?Sized>(input:&'a T) -> IResult<&'a T, &'a T>
 where T:Index<Range<usize>, Output=T>+Index<RangeFrom<usize>, Output=T>,
       &'a T: IterIndices+InputLength {
@@ -110,20 +149,11 @@ named!(declaration <&str, &str>,
 
 
 #[test]
-fn test_symbol() {
-  let t = " this_is_a_valid_symbol ";
-  let s = object_symbol_name(t);
-  assert!(s == Done(" ", "this_is_a_valid_symbol"));
-
-  let t1 = " this_is_a_valid_symbol {";
-  let s1 = object_symbol_name(t1);
-  assert!(s1 == Done(" {", "this_is_a_valid_symbol"));
-}
-
-#[test]
 fn test_declaration() {
   let testable = vec![
-    " 💩 {}",
+    "💩 \n", // a symbol must always be followed by something.
+    "💩 {}",
+    "         💩 {}",
     " 💩 { \n }",
     " 💩  # coucou\n{ \n }",
     " 💩 { # 🍓 \n }",
