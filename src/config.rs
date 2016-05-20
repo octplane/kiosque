@@ -10,8 +10,8 @@ macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
   $(
     {
       let res = $fun($it);
-      if let Done(_,p) = res {
-        println!("{}: {:?}", $t, p);
+      if let Done(_,_) = res {
+        // println!("{}: {:?}", $t, p);
       } else {
         assert!(false, format!("{}: Failed to parse correctly {:?}: {:?}", $t, $it, res));
       }
@@ -46,6 +46,7 @@ fn end_of_symbol(chr: char) -> bool {
   !(chr == ' ' || 
    chr == '#' || 
    chr == '\n' || 
+   chr == '=' ||  // this is to work in key names. Will have to fixe someday
    chr == '{' ||
    chr == '}' )
 }
@@ -167,7 +168,7 @@ fn test_declarations() {
 
 named!(key_value    <&str,(&str,&str)>,
 chain!(
-  key: alphanumeric                   ~
+  key: object_symbol_name             ~
   space?                              ~
   tag_s!("=")                         ~
   space?                              ~
@@ -187,6 +188,7 @@ fn test_key_value() {
     key_value,
     [
       "foo = \"bar\"  \n  ",
+      "f_a = 12\n",
       "length=12\n",
       "length = 12\n",
       "length = 12\n",
@@ -224,7 +226,7 @@ fn test_keys_and_values_aggregator() {
     "keys_and_values_aggregator",
     keys_and_values_aggregator,
     [
-      "foo = bar\n\tlength=12\noutput_folder = \"./logs/$APP/\"\n}"
+      "foo = bar\n\tlength=12\noutput_folder = \"./logs/$APP/\"   \n👔 = OFF\n}"
     ]
   );
 }
