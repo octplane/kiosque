@@ -10,8 +10,8 @@ macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
   $(
     {
       let res = $fun($it);
-      if let Done(_,p) = res {
-        println!("{}: {:?}", $t, p);
+      if let Done(_,_) = res {
+        // println!("{}: {:?}", $t, p);
       } else {
         assert!(false, format!("{}: Failed to parse correctly {:?}: {:?}", $t, $it, res));
       }
