@@ -31,7 +31,7 @@ named!(quoted_string <&str, &str>,
 
 #[test]
 fn test_quoted_string() {
-  test_gen!(
+    test_gen!(
     "quoted_string",
     quoted_string,
     [
@@ -59,7 +59,7 @@ named!(object_symbol_name <&str, &str>,
 #[test]
 fn tests() {
 
-  test_gen!(
+    test_gen!(
     "Symbols",
     object_symbol_name,
     [
@@ -72,8 +72,8 @@ fn tests() {
 }
 
 pub struct Node {
-  pub name: String,
-  pub content: Vec<String>
+    pub name: String,
+    pub content: Vec<String>,
 }
 
 use std::ops::{Index, Range, RangeFrom};
@@ -83,42 +83,43 @@ use nom::Err::Position;
 
 /// Recognizes spaces, tabs, carriage returns and line feeds
 /// Detect # in multispace content and then eats until \n
-pub fn multispace_and_comment<'a, T: ?Sized>(input:&'a T) -> IResult<&'a T, &'a T>
-where T:Index<Range<usize>, Output=T>+Index<RangeFrom<usize>, Output=T>,
-&'a T: IterIndices+InputLength {
+pub fn multispace_and_comment<'a, T: ?Sized>(input: &'a T) -> IResult<&'a T, &'a T>
+    where T: Index<Range<usize>, Output = T> + Index<RangeFrom<usize>, Output = T>,
+          &'a T: IterIndices + InputLength
+{
 
-  let input_length = input.input_len();
-  if input_length == 0 {
-    return Error(Position(ErrorKind::MultiSpace, input));
-  }
-
-  let mut in_comment = false;
-
-  for (idx, item) in input.iter_indices() {
-    let chr = item.as_char();
-    if chr == '#' {
-      in_comment = true;
+    let input_length = input.input_len();
+    if input_length == 0 {
+        return Error(Position(ErrorKind::MultiSpace, input));
     }
-    if in_comment {
-      if chr == '\n' {
-        in_comment = false
-      }
-    } else {
-      if ! (chr == ' ' || chr == '\t' || chr == '\n') {
-        if idx == 0 {
-          return Error(Position(ErrorKind::MultiSpace, input))
-        } else {
-          return Done(&input[idx..], &input[0..idx])
+
+    let mut in_comment = false;
+
+    for (idx, item) in input.iter_indices() {
+        let chr = item.as_char();
+        if chr == '#' {
+            in_comment = true;
         }
-      }
+        if in_comment {
+            if chr == '\n' {
+                in_comment = false
+            }
+        } else {
+            if !(chr == ' ' || chr == '\t' || chr == '\n') {
+                if idx == 0 {
+                    return Error(Position(ErrorKind::MultiSpace, input));
+                } else {
+                    return Done(&input[idx..], &input[0..idx]);
+                }
+            }
+        }
     }
-  }
-  Done(&input[input_length..], input)
+    Done(&input[input_length..], input)
 }
 
 #[test]
 fn test_multispace_content() {
-  test_gen!(
+    test_gen!(
     "Multispace and comments",
     multispace_and_comment,
     [
@@ -131,7 +132,7 @@ fn test_multispace_content() {
     "\n#\n# \n\t#\n"]);
 }
 
-named!(declaration <&str, &str>, 
+named!(declaration <&str, &str>,
        chain!(
          symbol: object_symbol_name   ~
          alt!(
@@ -149,7 +150,7 @@ named!(declaration <&str, &str>,
 
 #[test]
 fn test_declarations() {
-  test_gen!(
+    test_gen!(
     "Declarations",
     declaration,
     [
@@ -185,25 +186,22 @@ chain!(
   || {kva} )
 );
 
-fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
-  let mut h: HashMap<String, String> = HashMap::new();
+fn keys_and_values(input: &str) -> IResult<&str, HashMap<String, String>> {
+    let mut h: HashMap<String, String> = HashMap::new();
 
-  match keys_and_values_aggregator(input) {
-    IResult::Done(i, tuple_vec) => {
-      for &(k,v) in tuple_vec.iter() {
-        h.insert(k.to_owned().into(), v.to_owned().into());
-      }
-      IResult::Done(i, h)
-    },
-    IResult::Incomplete(a)     => IResult::Incomplete(a),
-    IResult::Error(a)          => IResult::Error(a)
-  }
+    match keys_and_values_aggregator(input) {
+        IResult::Done(i, tuple_vec) => {
+            for &(k, v) in tuple_vec.iter() {
+                h.insert(k.to_owned().into(), v.to_owned().into());
+            }
+            IResult::Done(i, h)
+        }
+        IResult::Incomplete(a) => IResult::Incomplete(a),
+        IResult::Error(a) => IResult::Error(a),
+    }
 }
 
 
-// 
-// 
-// 
 // named!(object_and_params <&str, (String, Option<HashMap<String,String>>)>,
 //   chain!(
 //     blanks                          ~
@@ -214,7 +212,7 @@ fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
 //     || { (ik.to_lowercase(), kv) }
 //   )
 // );
-// 
+//
 // named!(inputs <&str, Vec<(String, Option<HashMap<String,String>>)> >,
 //   chain!(
 //     tag!("input")                     ~
@@ -228,7 +226,7 @@ fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
 //     || { ins }
 //   )
 // );
-// 
+//
 // named!(outputs <&str, Vec<(String, Option<HashMap<String,String>>)> >,
 //   chain!(
 //     tag!("output")                     ~
@@ -242,13 +240,13 @@ fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
 //     || { outs }
 //   )
 // );
-// 
+//
 // #[derive(Debug)]
 // pub struct Configuration {
 //   pub inputs: Vec<(String,  Option<HashMap<String,String>>)>,
 //   pub outputs: Vec<(String,  Option<HashMap<String,String>>)>,
 // }
-// 
+//
 // named!(configuration  <&str, Configuration>,
 //   chain!(
 //     inputs: inputs          ~
@@ -262,14 +260,14 @@ fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
 //     }
 //   )
 // );
-// 
-// 
-// 
+//
+//
+//
 // pub fn read_config_file(filename: &str) -> Result<Configuration, String> {
 //   println!("Reading config file.");
 //   let mut f = File::open(filename).unwrap();
 //   let mut s = String::new();
-// 
+//
 //   match f.read_to_string(&mut s) {
 //     Ok(_) => {
 //       match configuration(&s) {
@@ -285,15 +283,15 @@ fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
 //     Err(e) => Err(format!("Read error: {:?}", e))
 //   }
 // }
-// 
+//
 // #[test]
 // fn test_simple_config_parser() {
-//   if let Ok(c) = read_config_file("tests/simple.conf") { 
+//   if let Ok(c) = read_config_file("tests/simple.conf") {
 //   } else {
 //     assert!(false);
 //   }
 // }
-//  
+//
 // #[test]
 // fn test_config_parser() {
 //   match read_config_file("tests/test_config.conf") {
@@ -306,13 +304,13 @@ fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
 //       file_conf.insert("path".to_owned(), "some literal string".to_owned());
 //       file_conf.insert("pipo".to_owned(), "12".to_owned());
 //       assert_eq!(conf.inputs[0].1, Some(file_conf) );
-// 
+//
 //       assert_eq!(conf.inputs[1].0, "stdin");
 //       let mut stdin_conf = HashMap::new();
 //       stdin_conf.insert("tag".to_owned(), "stdin".to_owned());
 //       assert_eq!(conf.inputs[1].1, Some(stdin_conf) );
-// 
-// 
+//
+//
 //     },
 //     Err(e) => assert!(false, format!("Unable to parse configuration file: {}", e))
 //   }
