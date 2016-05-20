@@ -1,34 +1,10 @@
 use std::str;
 
-use nom::{IResult, multispace};
+use nom::{IResult, multispace, alphanumeric, space};
 use nom::IResult::*;
 
 use std::io::prelude::*;
-
-// named!(quoted_string <&str>,
-//        chain!(
-//          tag!("\"")              ~
-//          qs: map_res!(
-//            take_until!("\""),
-//            str::from_utf8)       ~
-//          tag!("\"")              ,
-//          || { qs }
-//          )
-//       );
-// 
-// A symbol is anything between spaces, and followed by something.
-named!(object_symbol_name <&str, &str>,
-       chain!(
-         multispace? ~
-         symbol: alt!(
-           take_until_s!(" ")   |
-           take_until_s!("\t")   |
-           take_until_s!("\n")  |
-           take_until_s!("{")   |
-           take_until_s!("#")),
-
-           || { (symbol) } ));
-
+use std::collections::HashMap;
 
 macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
   $(
@@ -42,6 +18,43 @@ macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
    )*
 }
 }
+
+
+named!(quoted_string <&str, &str>,
+       chain!(
+         tag_s!("\"")              ~
+         qs: take_until_s!("\"")   ~
+         tag_s!("\"")              ,
+         || { qs }
+         )
+      );
+
+#[test]
+fn test_quoted_string() {
+  test_gen!(
+    "quoted_string",
+    quoted_string,
+    [
+    "\"value of parameter\"",
+    "\"🍓\""
+    ]
+    );
+}
+
+
+// A symbol is anything between spaces, and followed by something.
+named!(object_symbol_name <&str, &str>,
+       chain!(
+         multispace? ~
+         symbol: alt!(
+           take_until_s!(" ")   |
+           take_until_s!("\t")   |
+           take_until_s!("\n")  |
+           take_until_s!("{")   |
+           take_until_s!("#")),
+
+           || { (symbol) } ));
+
 
 #[test]
 fn tests() {
@@ -122,17 +135,17 @@ named!(declaration <&str, &str>,
        chain!(
          symbol: object_symbol_name   ~
          alt!(
-          multispace_and_comment      |
-          chain!(
-            tag_s!("{")               ~
-            multispace_and_comment    ~
-            tag_s!("}"),
-          || { "" }
-          )
-        )
-        ,
-        || { symbol })
-);
+           multispace_and_comment => { |_| HashMap::<String,String>::new()} |
+           chain!(
+             tag_s!("{")               ~
+             kv: keys_and_values       ~
+             tag_s!("}"),
+             || { kv }
+             )
+           )
+         ,
+         || { symbol })
+      );
 
 #[test]
 fn test_declarations() {
@@ -151,58 +164,44 @@ fn test_declarations() {
 }
 
 
-// named!(comment,
-//     chain!(
-//         tag!("#")           ~
-//         not_line_ending?    ~
-//         alt!(eol | eof)     ,
-//         || { None }));
+named!(key_value    <&str,(&str,&str)>,
+chain!(
+  key: alphanumeric                   ~
+  space?                            ~
+  tag_s!("=")                         ~
+  space?                            ~
+  val: alt!(
+    quoted_string |
+    object_symbol_name
+    )                                    ~
+  multispace_and_comment               ,
+  ||{(key, val)}
+  )
+);
+
+named!(keys_and_values_aggregator<&str, Vec<(&str,&str)> >,
+chain!(
+  kva: many0!(key_value),
+  || {kva} )
+);
+
+fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
+  let mut h: HashMap<String, String> = HashMap::new();
+
+  match keys_and_values_aggregator(input) {
+    IResult::Done(i, tuple_vec) => {
+      for &(k,v) in tuple_vec.iter() {
+        h.insert(k.to_owned().into(), v.to_owned().into());
+      }
+      IResult::Done(i, h)
+    },
+    IResult::Incomplete(a)     => IResult::Incomplete(a),
+    IResult::Error(a)          => IResult::Error(a)
+  }
+}
+
+
 // 
-// named!(opening, tag!("{"));
-// 
-// named!(key_value    <&str,(&str,&str)>,
-//   chain!(
-//     key: map_res!(alphanumeric, str::from_utf8) ~
-//       space?                            ~
-//       tag!("=")                         ~
-//       space?                            ~
-//     val: alt!(
-//       quoted_string |
-//       map_res!(
-//         take_until_either!("\n\r#"),
-//         str::from_utf8
-//       )
-//       )                                    ~
-//       blanks                               ,
-//     ||{(key, val)}
-//   )
-// );
-// 
-// 
-// named!(keys_and_values_aggregator<&str, Vec<(&str,&str)> >,
-//  chain!(
-//      tag!("{")                ~
-//      blanks                   ~
-//      kva: many0!(key_value)   ~
-//      blanks                   ~
-//      tag!("}")                ,
-//  || {kva} )
-// );
-// 
-// fn keys_and_values(input:&str) -> IResult<&str, HashMap<String, String> > {
-//   let mut h: HashMap<String, String> = HashMap::new();
-// 
-//   match keys_and_values_aggregator(input) {
-//     IResult::Done(i, tuple_vec) => {
-//       for &(k,v) in tuple_vec.iter() {
-//         h.insert(k.to_owned(), v.to_owned());
-//       }
-//       IResult::Done(i, h)
-//     },
-//     IResult::Incomplete(a)     => IResult::Incomplete(a),
-//     IResult::Error(a)          => IResult::Error(a)
-//   }
-// }
 // 
 // 
 // named!(object_and_params <&str, (String, Option<HashMap<String,String>>)>,
