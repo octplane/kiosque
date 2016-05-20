@@ -10,7 +10,8 @@ macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
   $(
     {
       let res = $fun($it);
-      if let Done(_,_) = res {
+      if let Done(_,p) = res {
+        println!("{}: {:?}", $t, p);
       } else {
         assert!(false, format!("{}: Failed to parse correctly {:?}: {:?}", $t, $it, res));
       }
@@ -41,39 +42,38 @@ fn test_quoted_string() {
     );
 }
 
+fn end_of_symbol(chr: char) -> bool {
+  !(chr == ' ' || 
+   chr == '#' || 
+   chr == '\n' || 
+   chr == '{' ||
+   chr == '}' )
+}
+
 
 // A symbol is anything between spaces, and followed by something.
 named!(object_symbol_name <&str, &str>,
        chain!(
          multispace? ~
-         symbol: alt!(
-           take_until_s!(" ")   |
-           take_until_s!("\t")   |
-           take_until_s!("\n")  |
-           take_until_s!("{")   |
-           take_until_s!("#")),
-
+         symbol: take_while_s!( end_of_symbol ),
            || { (symbol) } ));
 
 
 #[test]
-fn tests() {
+fn test_object_symbol_name() {
 
     test_gen!(
-    "Symbols",
+    "object_symbol_name",
     object_symbol_name,
     [
     "👔\n",
     " this_is_valid_symbol ",
-    "this_is_a_valid_symbol {"
+    "this_is_a_valid_symbol {",
+    "this_is_a_valid_symbol}",
+    "symbol\n\tshould_not_show=12\noutput_folder = \"./logs/$APP/\"\n"
     ]
     );
 
-}
-
-pub struct Node {
-    pub name: String,
-    pub content: Vec<String>,
 }
 
 use std::ops::{Index, Range, RangeFrom};
@@ -120,7 +120,7 @@ pub fn multispace_and_comment<'a, T: ?Sized>(input: &'a T) -> IResult<&'a T, &'a
 #[test]
 fn test_multispace_content() {
     test_gen!(
-    "Multispace and comments",
+    "multispace_and_comment",
     multispace_and_comment,
     [
     "   ",
@@ -136,13 +136,13 @@ named!(declaration <&str, &str>,
        chain!(
          symbol: object_symbol_name   ~
          alt!(
-           multispace_and_comment => { |_| HashMap::<String,String>::new()} |
            chain!(
              tag_s!("{")               ~
              kv: keys_and_values       ~
              tag_s!("}"),
              || { kv }
-             )
+             )                         |
+           multispace_and_comment => { |_| HashMap::<String,String>::new()}
            )
          ,
          || { symbol })
@@ -151,7 +151,7 @@ named!(declaration <&str, &str>,
 #[test]
 fn test_declarations() {
     test_gen!(
-    "Declarations",
+    "declaration",
     declaration,
     [
     "empty_declaration\n",
@@ -168,17 +168,34 @@ fn test_declarations() {
 named!(key_value    <&str,(&str,&str)>,
 chain!(
   key: alphanumeric                   ~
-  space?                            ~
+  space?                              ~
   tag_s!("=")                         ~
-  space?                            ~
+  space?                              ~
   val: alt!(
-    quoted_string |
+    quoted_string                     |
     object_symbol_name
-    )                                    ~
-  multispace_and_comment               ,
+    )                                 ~
+  multispace_and_comment              ,
   ||{(key, val)}
   )
 );
+
+#[test]
+fn test_key_value() {
+  test_gen!(
+    "key_value",
+    key_value,
+    [
+      "foo = \"bar\"  \n  ",
+      "length=12\n",
+      "length = 12\n",
+      "length = 12\n",
+      "length = douze\n",
+      "length = 🍓\n",
+      "length = \"🍓\"\n",
+      "length = \"🍓\" # and now with some comment\n"
+    ]);
+}
 
 named!(keys_and_values_aggregator<&str, Vec<(&str,&str)> >,
 chain!(
@@ -199,6 +216,17 @@ fn keys_and_values(input: &str) -> IResult<&str, HashMap<String, String>> {
         IResult::Incomplete(a) => IResult::Incomplete(a),
         IResult::Error(a) => IResult::Error(a),
     }
+}
+
+#[test]
+fn test_keys_and_values_aggregator() {
+  test_gen!(
+    "keys_and_values_aggregator",
+    keys_and_values_aggregator,
+    [
+      "foo = bar\n\tlength=12\noutput_folder = \"./logs/$APP/\"\n"
+    ]
+  );
 }
 
 
