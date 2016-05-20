@@ -224,7 +224,7 @@ fn test_keys_and_values_aggregator() {
     "keys_and_values_aggregator",
     keys_and_values_aggregator,
     [
-      "foo = bar\n\tlength=12\noutput_folder = \"./logs/$APP/\"\n"
+      "foo = bar\n\tlength=12\noutput_folder = \"./logs/$APP/\"\n}"
     ]
   );
 }
