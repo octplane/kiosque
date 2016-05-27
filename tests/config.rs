@@ -1,8 +1,6 @@
 extern crate nom;
 extern crate log_archive;
 
-use log_archive::config::*;
-
 macro_rules! test_gen { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => {
   $(
     {
@@ -42,13 +40,12 @@ macro_rules! test_gen_complete { ($t:expr, $fun:expr, [ $( $it:expr ),* ])   => 
 
 #[cfg(test)]
 mod config_test {
-  use super::*;
-  use std::collections::HashMap;
-
   use nom::IResult::*;
-
-  use log_archive::config::*;
-
+  use log_archive::config::{
+    multispace_and_comment,
+    declaration,
+    key_value,
+    keys_and_values_aggregator};
 
   #[test]
   fn test_multispace_content() {

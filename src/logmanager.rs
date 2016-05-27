@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::fmt;
 use std::io::{self, Read};
 use std::thread;
 use std::borrow::Borrow;
@@ -7,7 +8,7 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 
 use capnp;
 use capnp::serialize_packed;
-use logformat::schema_capnp::logblock;
+use logformat::schema_capnp::{logblock, logline};
 
 use regex::Regex;
 
@@ -34,46 +35,72 @@ pub struct LogFile {
     pub content: Vec<u8>,
 }
 
-impl LogFile {
-    pub fn gen_find<F>(&self, field: &str, needle: &str, testf: F) -> bool
-        where F: Fn(&str, &str) -> bool
-    {
-        if let Ok(message_reader) =
-               serialize_packed::read_message(&mut self.content.borrow(),
-                                              ::capnp::message::ReaderOptions::new()) {
-            if let Ok(logblock) = message_reader.get_root::<logblock::Reader>() {
-                if let Ok(entries) = logblock.get_entries() {
-                    entries.iter().any(|line_reader| {
-                        if let Ok(facets) = line_reader.get_facets() {
-                            if let Ok(entries) = facets.get_entries() {
-                                entries.iter().any(|ent| {
-                                    let k = ent.get_key().ok().unwrap();
-                                    if k == field {
-                                        let v = ent.get_value().ok().unwrap();
-                                        testf(needle, v)
-                                    } else {
-                                        false
-                                    }
-                                })
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
+fn find_field<'a>(entry: &'a logline::Reader, field: &str) -> Option<&'a str> {
+    match entry.get_facets() {
+        Ok(facets) => {
+            match facets.get_entries() {
+                Ok(entries) => {
+                    for kv in entries.iter() {
+                        let k = kv.get_key().ok().unwrap();
+                        if k == field {
+                            return Some(kv.get_value().ok().unwrap());
                         }
-                    })
-                } else {
-                    false
+                    }
                 }
-            } else {
-                false
+                _ => {
+                    return None;
+                }
             }
-        } else {
-            false
+        }
+        _ => {
+            return None;
         }
     }
+    None
+}
 
-    pub fn find(&self, field: &str, needle: &str) -> bool {
+pub type LogSearchResult = u64;
+
+impl LogFile {
+    pub fn gen_find<F>(&self, field: &str, needle: &str, testf: F) -> LogSearchResult
+        where F: Fn(&str, &str) -> bool
+    {
+        let res = match serialize_packed::read_message(&mut self.content.borrow(),
+                                                       ::capnp::message::ReaderOptions::new()) {
+            Ok(message_reader) => {
+                match message_reader.get_root::<logblock::Reader>() {
+                    Ok(logblock) => {
+                        match logblock.get_entries() {
+                            Ok(entries) => {
+                                entries.iter().fold(0, |acc, line_reader| {
+                                    match find_field(&line_reader, field) {
+                                        Some(content) => {
+                                            if testf(needle, content) {
+                                                acc + 1
+                                            } else {
+                                                acc
+                                            }
+                                        }
+                                        _ => acc,
+                                    }
+                                })
+                            }
+                            _ => 0,
+                        }
+                    }
+                    _ => 0,
+                }
+            }
+            _ => 0,
+        };
+        println!("Looking for {} in field {}: Got {:?} matches",
+                 needle,
+                 field,
+                 res);
+        res
+    }
+
+    pub fn find(&self, field: &str, needle: &str) -> u64 {
         self.gen_find(field, needle, |needle, haystack| {
             match haystack.find(needle) {
                 Some(_) => true,
@@ -81,7 +108,7 @@ impl LogFile {
             }
         })
     }
-    pub fn rfind(&self, field: &str, needle: &str) -> bool {
+    pub fn rfind(&self, field: &str, needle: &str) -> u64 {
         let re = Regex::new(needle).unwrap();
         self.gen_find(field, needle, |_, haystack| re.is_match(haystack))
     }
@@ -93,18 +120,17 @@ pub struct LogFileThread {
 }
 
 
+
 impl LogFileThread {
-    pub fn find(&self, field: &str, needle: &str) -> bool {
+    pub fn find(&self, field: &str, needle: &str) -> LogSearchResult {
         self.content
             .iter()
-            .filter(|lf| lf.find(field, needle))
-            .count() > 0
+            .fold(0, |acc, lf| acc + lf.find(field, needle))
     }
-    pub fn rfind(&self, field: &str, needle: &str) -> bool {
+    pub fn rfind(&self, field: &str, needle: &str) -> LogSearchResult {
         self.content
             .iter()
-            .filter(|lf| lf.rfind(field, needle))
-            .count() > 0
+            .fold(0, |acc, lf| acc + lf.rfind(field, needle))
     }
     pub fn run(&mut self, rx: Receiver<ManagerMessages>, tx: Sender<ClientMessages>) {
         println!("{}: Thread starting.", self.name);
@@ -114,7 +140,8 @@ impl LogFileThread {
                     match read_log_block(&file) {
                         Ok(lf) => {
                             println!("{}: Read file {}", self.name, file);
-                            self.content.push(lf)
+                            self.content.push(lf);
+                            tx.send(ClientMessages::ReadFile(file));
                         }
                         Err(e) => {
                             println!("{}: Something went wrong while reading {}: {:?}",
@@ -131,9 +158,12 @@ impl LogFileThread {
                         self.find(&field, &needle)
                     };
 
-                    let _ = if found {
+                    let _ = if found > 0 {
+                        println!("FOUND IS {}", found);
+
                         tx.send(ClientMessages::FoundNeedle(self.name.clone(), field, needle))
                     } else {
+                        println!("FOUND IS 0 ({})", needle);
                         tx.send(ClientMessages::NotFound(self.name.clone(), field, needle))
                     };
                 }
@@ -157,6 +187,7 @@ pub enum ManagerMessages {
 
 #[derive(Debug)]
 pub enum ClientMessages {
+    ReadFile(String),
     FoundNeedle(String, String, String),
     NotFound(String, String, String),
 }
@@ -188,6 +219,9 @@ impl LogManager {
             match c.recv() {
                 Ok(ClientMessages::FoundNeedle(_, _, _)) => count = count + 1,
                 Ok(ClientMessages::NotFound(t, _, _)) => println!("Miss from {}", t),
+                Ok(ClientMessages::ReadFile(f)) => {
+                    panic!("Thread re-read file {}, this is not normal", f)
+                }
                 Err(e) => println!("Something went wront on the pipe: {}", e),
             }
         }
@@ -196,9 +230,15 @@ impl LogManager {
     }
 }
 
-pub fn new_from_files(thread_count: u32, files: Vec<String>) -> LogManager {
+pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
 
-    let data = (0..thread_count).map(|ix| {
+    let t_count = if files.len() > thread_count {
+        thread_count
+    } else {
+        files.len()
+    };
+
+    let data = (0..t_count).map(|ix| {
         let (manager_to_thread_tx, manager_to_thread_rx) = channel::<ManagerMessages>();
         let (thread_to_manager_tx, thread_to_manager_rx) = channel::<ClientMessages>();
 
@@ -227,10 +267,23 @@ pub fn new_from_files(thread_count: u32, files: Vec<String>) -> LogManager {
     }
 
     for (ix, file) in files.iter().enumerate() {
-        let t_index = ix % tx_chans.len();
+        let t_index = ix % t_count;
         tx_chans[t_index]
             .send(ManagerMessages::ReadFile(file.clone()))
             .unwrap();
+    }
+    let mut ready = 0;
+    for rx in &mut rx_chans {
+        match rx.recv() {
+            Ok(ClientMessages::ReadFile(_)) => ready = ready + 1,
+            Ok(m) => panic!("Unexpected thread message: {:?}", m),
+            Err(e) => println!("Something went wront on the pipe: {}", e),
+        }
+    }
+    if ready != t_count {
+        panic!("Unable to read all files");
+    } else {
+        println!("Read {} files in {} threads", files.len(), t_count);
     }
 
     LogManager {
