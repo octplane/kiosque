@@ -7,11 +7,11 @@ extern crate logformat;
 
 use std::collections::HashMap;
 use nickel::status::StatusCode;
-use nickel::{Nickel, HttpRouter, JsonBody};
+use nickel::{Nickel, HttpRouter};
 use rustc_serialize::json;
 
 use capnp::message::Builder;
-use logformat::schema_capnp::{logblock, logline};
+use logformat::schema_capnp::{logblock};
 
 
 #[derive(RustcDecodable, Debug)]
@@ -37,7 +37,7 @@ fn main() {
   let mut server = Nickel::new();
   let mut message = Builder::new_default();
   let mut block = message.init_root::<logblock::Builder>();
-  let mut lines = block.borrow().init_entries(50000);
+  let lines = block.borrow().init_entries(50000);
 
 
   server.options("/services/collector/event/1.0", middleware! { |request, response| "Connector is ready" }); 
