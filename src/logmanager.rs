@@ -135,11 +135,13 @@ impl LogFileThread {
     }
     pub fn run(&mut self, rx: Receiver<ManagerMessages>, tx: Sender<ClientMessages>) {
         println!("{}: Thread starting.", self.name);
+        let mut files_to_read = vec![];
         loop {
             match rx.recv() {
-                Ok(ManagerMessages::ReadFiles(files)) => {
-                    println!("Reading {:?}", files);
-                    for file in &files {
+                Ok(ManagerMessages::QueueFile(file)) => files_to_read.push(file),
+                Ok(ManagerMessages::ReadFiles) => {
+                    println!("Reading {:?}", files_to_read);
+                    for file in files_to_read.iter() {
                         match read_log_block(&file) {
                             Ok(lf) => {
                                 println!("{}: Read file {}", self.name, file);
@@ -153,7 +155,8 @@ impl LogFileThread {
                             }
                         }
                     }
-                    tx.send(ClientMessages::ReadFiles(files));
+                    tx.send(ClientMessages::ReadFiles(files_to_read.clone()));
+                    files_to_read.clear();
                 }
                 Ok(ManagerMessages::FindNeedle(field, needle, r_based)) => {
                     let found = if r_based {
@@ -184,7 +187,8 @@ impl LogFileThread {
 
 #[derive(Debug)]
 pub enum ManagerMessages {
-    ReadFiles(Vec<String>),
+    QueueFile(String),
+    ReadFiles,
     FindNeedle(String, String, bool),
     Shutdown(String),
 }
@@ -270,19 +274,16 @@ pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
         rx_chans.push(rx);
     }
 
-
-    // sort by modulo, and group by to initialize the Readers properly
-    for (key, group) in files.iter()
-        .enumerate()
-        .sort_by(|a, b| (a.0 % t_count).cmp(&(b.0 % t_count)))
-        .iter()
-        .group_by(|elt| elt.0 % t_count) {
-        tx_chans[key]
-            .send(ManagerMessages::ReadFiles(group.iter()
-                .map(|ix_file| ix_file.1.clone())
-                .collect()))
+    for (ix, file) in files.iter().enumerate() {
+        tx_chans[ix % t_count]
+            .send(ManagerMessages::QueueFile(file.clone()))
             .unwrap();
     }
+
+    for chan in &mut tx_chans {
+        chan.send(ManagerMessages::ReadFiles).unwrap()
+    }
+
 
     let mut ready = 0;
     for rx in &mut rx_chans {
