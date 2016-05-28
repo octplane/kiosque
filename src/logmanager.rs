@@ -84,18 +84,22 @@ pub struct LogFile {
 
 
 impl LogFile {
+    pub fn reader_options(&self) -> ::capnp::message::ReaderOptions {
+        let mut ro = ::capnp::message::ReaderOptions::new();
+        ro.traversal_limit_in_words(20000000);
+        ro
+    }
     pub fn get_stats(&self) -> LogFileStats {
-        let line_count =
-            match serialize_packed::read_message(&mut self.content.borrow(),
-                                                 ::capnp::message::ReaderOptions::new()) {
-                Ok(message_reader) => {
-                    match message_reader.get_root::<logblock::Reader>() {
-                        Ok(logblock) => logblock.get_entries().unwrap().len(),
-                        _ => 0,
-                    }
+        let line_count = match serialize_packed::read_message(&mut self.content.borrow(),
+                                                              self.reader_options()) {
+            Ok(message_reader) => {
+                match message_reader.get_root::<logblock::Reader>() {
+                    Ok(logblock) => logblock.get_entries().unwrap().len(),
+                    _ => 0,
                 }
-                _ => 0,
-            };
+            }
+            Err(e) => panic!("Error while decoding message: {:?}", e),
+        };
         LogFileStats {
             fname: self.fname.clone(),
             size_bytes: self.content.len(),
@@ -107,7 +111,7 @@ impl LogFile {
         where F: Fn(&str, &str) -> bool
     {
         let res = match serialize_packed::read_message(&mut self.content.borrow(),
-                                                       ::capnp::message::ReaderOptions::new()) {
+                                                       self.reader_options()) {
             Ok(message_reader) => {
                 match message_reader.get_root::<logblock::Reader>() {
                     Ok(logblock) => {
@@ -184,10 +188,10 @@ impl LogFileThread {
                                 self.content.push(lf);
                             }
                             Err(e) => {
-                                println!("{}: Something went wrong while reading {}: {:?}",
-                                         self.name,
-                                         file,
-                                         e)
+                                panic!("{}: Something went wrong while reading {}: {:?}",
+                                       self.name,
+                                       file,
+                                       e)
                             }
                         }
                     }

@@ -164,10 +164,11 @@ mod capnp_tests {
     #[test]
     fn search_things() {
 
-        let files = (1..21)
+        let files = (1..2)
             .map(|ix| format!("data/sample{}.capnp", ix))
             .collect();
         let mut lm = new_from_files(8, files);
+
         {
             let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
             let matches = lm.find("stdout", "GET", true);
