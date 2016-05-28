@@ -35,6 +35,9 @@ static REFERERS: &'static [&'static str] = &["-",
                                              "http://bestcyclingreviews.com/top_online_shops",
                                              "http://bleater.com",
                                              "http://searchengine.com"];
+
+static VERBS: &'static [&'static str] = &["GET", "POST", "PUT", "DELETE", "HEAD"];
+
 static USERAGENTS: &'static [&'static str] =
     &["Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)",
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) \
@@ -82,6 +85,7 @@ pub fn line_generator(event_count: u32) -> Vec<(DateTime<UTC>, String)> {
             let r = REFERERS[rng.gen_range(0, REFERERS.len())];
             let ua = USERAGENTS[rng.gen_range(0, USERAGENTS.len())];
             let uri = RESOURCES[rng.gen_range(0, RESOURCES.len())];
+            let verb = VERBS[rng.gen_range(0, VERBS.len())];
 
             let prefix = match uri.find("Store") {
                 Some(_) => format!("{}{}", uri, rng.gen_range(1000, 1500)),
@@ -89,9 +93,10 @@ pub fn line_generator(event_count: u32) -> Vec<(DateTime<UTC>, String)> {
             };
 
             let (datetime, s_time) = apache_time(now, time);
-            let line = format!("{} - - [{}] \"GET {}{} HTTP/1.0\" 200 {} \"{}\" \"{}\"",
+            let line = format!("{} - - [{}] \"{} {}{} HTTP/1.0\" 200 {} \"{}\" \"{}\"",
                                random_ip(),
                                s_time,
+                               verb,
                                uri,
                                prefix,
                                rng.gen_range(2000, 5000),
@@ -150,16 +155,16 @@ mod capnp_tests {
     #[ignore]
     fn generate_20_files() {
         println!("Generating test files...");
-        for x in 1..20 {
-            println!("{}/20", x);
-            build_log_block("data/sample", x, 50000);
+        for x in 1..16 {
+            println!("{}", x);
+            build_log_block("data/sample", x, 500000);
         }
     }
 
     #[test]
     fn search_things() {
 
-        let files = (1..20)
+        let files = (1..21)
             .map(|ix| format!("data/sample{}.capnp", ix))
             .collect();
         let mut lm = new_from_files(8, files);
@@ -167,7 +172,7 @@ mod capnp_tests {
             let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
             let matches = lm.find("stdout", "GET", true);
             println!("Matches: {}", matches);
-            assert!(matches, "matches: {} when if should not", matches);
+            assert!(matches > 0, "matches: {} when if should not", matches);
             let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
             let duration = end - start;
             println!("Tooks {}ms to scan and find", duration.num_milliseconds());
@@ -178,7 +183,7 @@ mod capnp_tests {
             let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
             let duration = end - start;
             println!("Tooks {}ms to scan and miss", duration.num_milliseconds());
-            assert!(!matches,
+            assert!(matches == 0,
                     "We have some matches ({}) for something that shouldn't",
                     matches);
         }

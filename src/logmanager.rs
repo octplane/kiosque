@@ -6,6 +6,11 @@ use std::borrow::Borrow;
 use std::thread::JoinHandle;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use itertools::Itertools;
+use chrono::duration::Duration;
+use chrono::datetime::DateTime;
+use chrono::offset::utc::UTC;
+use chrono::Timelike;
+
 
 use capnp;
 use capnp::serialize_packed;
@@ -32,10 +37,6 @@ impl From<capnp::Error> for ReadError {
     }
 }
 
-pub struct LogFile {
-    pub content: Vec<u8>,
-}
-
 fn find_field<'a>(entry: &'a logline::Reader, field: &str) -> Option<&'a str> {
     match entry.get_facets() {
         Ok(facets) => {
@@ -60,9 +61,48 @@ fn find_field<'a>(entry: &'a logline::Reader, field: &str) -> Option<&'a str> {
     None
 }
 
-pub type LogSearchResult = u64;
+#[derive(Debug)]
+pub struct LogFileStats {
+    pub fname: String,
+    pub size_bytes: usize,
+    pub line_count: u32,
+}
+
+impl LogFileStats {
+    pub fn stats(&self) {
+        println!("{}: {} lines for {}",
+                 self.fname,
+                 self.line_count,
+                 byte_to_human(self.size_bytes));
+    }
+}
+
+pub struct LogFile {
+    pub fname: String,
+    pub content: Vec<u8>,
+}
+
 
 impl LogFile {
+    pub fn get_stats(&self) -> LogFileStats {
+        let line_count =
+            match serialize_packed::read_message(&mut self.content.borrow(),
+                                                 ::capnp::message::ReaderOptions::new()) {
+                Ok(message_reader) => {
+                    match message_reader.get_root::<logblock::Reader>() {
+                        Ok(logblock) => logblock.get_entries().unwrap().len(),
+                        _ => 0,
+                    }
+                }
+                _ => 0,
+            };
+        LogFileStats {
+            fname: self.fname.clone(),
+            size_bytes: self.content.len(),
+            line_count: line_count,
+        }
+    }
+
     pub fn gen_find<F>(&self, field: &str, needle: &str, testf: F) -> LogSearchResult
         where F: Fn(&str, &str) -> bool
     {
@@ -94,10 +134,6 @@ impl LogFile {
             }
             _ => 0,
         };
-        println!("Looking for {} in field {}: Got {:?} matches",
-                 needle,
-                 field,
-                 res);
         res
     }
 
@@ -155,7 +191,12 @@ impl LogFileThread {
                             }
                         }
                     }
-                    tx.send(ClientMessages::ReadFiles(files_to_read.clone()));
+                    let stats = self.content
+                        .iter()
+                        .map(|f| f.get_stats())
+                        .collect::<Vec<LogFileStats>>();
+                    tx.send(ClientMessages::ReadFiles(stats));
+
                     files_to_read.clear();
                 }
                 Ok(ManagerMessages::FindNeedle(field, needle, r_based)) => {
@@ -166,16 +207,15 @@ impl LogFileThread {
                     };
 
                     let _ = if found > 0 {
-                        println!("FOUND IS {}", found);
-
-                        tx.send(ClientMessages::FoundNeedle(self.name.clone(), field, needle))
+                        tx.send(ClientMessages::FoundNeedle(self.name.clone(),
+                                                            field,
+                                                            needle,
+                                                            found))
                     } else {
-                        println!("FOUND IS 0 ({})", needle);
                         tx.send(ClientMessages::NotFound(self.name.clone(), field, needle))
                     };
                 }
                 Ok(ManagerMessages::Shutdown(msg)) => {
-                    println!("{}: Will shutdown because {}.", self.name, msg);
                     break;
                 }
                 Err(e) => println!("{}: Error while recv(): {}", self.name, e),
@@ -184,6 +224,8 @@ impl LogFileThread {
         println!("{}: Thread stopping", self.name);
     }
 }
+
+pub type LogSearchResult = u64;
 
 #[derive(Debug)]
 pub enum ManagerMessages {
@@ -195,8 +237,8 @@ pub enum ManagerMessages {
 
 #[derive(Debug)]
 pub enum ClientMessages {
-    ReadFiles(Vec<String>),
-    FoundNeedle(String, String, String),
+    ReadFiles(Vec<LogFileStats>),
+    FoundNeedle(String, String, String, LogSearchResult),
     NotFound(String, String, String),
 }
 
@@ -217,7 +259,7 @@ impl LogManager {
         }
         println!("Shutdowning.");
     }
-    pub fn find(&mut self, field: &str, needle: &str, re_based: bool) -> bool {
+    pub fn find(&mut self, field: &str, needle: &str, re_based: bool) -> LogSearchResult {
         for chan in &self.tx_chans {
             chan.send(ManagerMessages::FindNeedle(field.into(), needle.into(), re_based))
                 .unwrap();
@@ -225,8 +267,8 @@ impl LogManager {
         let mut count = 0;
         for c in &self.rx_chans {
             match c.recv() {
-                Ok(ClientMessages::FoundNeedle(_, _, _)) => count = count + 1,
-                Ok(ClientMessages::NotFound(t, _, _)) => println!("Miss from {}", t),
+                Ok(ClientMessages::FoundNeedle(_, _, _, c)) => count = count + c,
+                Ok(ClientMessages::NotFound(t, _, _)) => {}
                 Ok(ClientMessages::ReadFiles(fs)) => {
                     panic!("Thread re-read files {:?}, this is not normal", fs)
                 }
@@ -234,7 +276,7 @@ impl LogManager {
             }
         }
         println!("Found is {}", count);
-        count == self.rx_chans.len()
+        count
     }
 }
 
@@ -274,6 +316,9 @@ pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
         rx_chans.push(rx);
     }
 
+
+    let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
+
     for (ix, file) in files.iter().enumerate() {
         tx_chans[ix % t_count]
             .send(ManagerMessages::QueueFile(file.clone()))
@@ -286,23 +331,58 @@ pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
 
 
     let mut ready = 0;
+    let mut content_stats = vec![];
     for rx in &mut rx_chans {
         match rx.recv() {
-            Ok(ClientMessages::ReadFiles(_)) => ready = ready + 1,
+            Ok(ClientMessages::ReadFiles(stats)) => {
+                content_stats.push(stats);
+                ready = ready + 1
+            }
             Ok(m) => panic!("Unexpected thread message: {:?}", m),
             Err(e) => println!("Something went wront on the pipe: {}", e),
         }
     }
+    let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
+    let duration = end - start;
+    println!("Tooks {}ms to read files", duration.num_milliseconds());
+
     if ready != t_count {
         panic!("Unable to read all files");
     } else {
-        println!("Read {} files in {} threads", files.len(), t_count);
+        let s = compute_stats(content_stats);
+        s.stats();
     }
 
     LogManager {
         threads: threads,
         tx_chans: tx_chans,
         rx_chans: rx_chans,
+    }
+}
+pub fn byte_to_human(byte: usize) -> String {
+    if byte > 1024 {
+        if byte > 1024 * 1024 {
+            format!("{} MB", byte / (1024 * 1024))
+        } else {
+            format!("{} kb", byte / 1024)
+        }
+    } else {
+        format!("{} bytes", byte)
+    }
+
+}
+pub fn compute_stats(stats: Vec<Vec<LogFileStats>>) -> LogFileStats {
+    let f_count = stats.iter().fold(0, |acc, s| acc + s.len());
+    let l_count = stats.iter().fold(0, |acc, s| {
+        acc + s.iter().fold(0, |acc, lfs| acc + lfs.line_count)
+    });
+    let b_count = stats.iter().fold(0, |acc, s| {
+        acc + s.iter().fold(0, |acc, lfs| acc + lfs.size_bytes)
+    });
+    LogFileStats {
+        fname: format!("{} files", f_count),
+        line_count: l_count,
+        size_bytes: b_count,
     }
 }
 
@@ -312,5 +392,8 @@ pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
     let mut buffer = Vec::new();
 
     try!(f.read_to_end(&mut buffer));
-    Ok(LogFile { content: buffer })
+    Ok(LogFile {
+        fname: file_name.into(),
+        content: buffer,
+    })
 }
