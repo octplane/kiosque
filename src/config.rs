@@ -11,12 +11,11 @@ use std::collections::HashMap;
 use std::ops::{Index, Range, RangeFrom};
 
 fn end_of_symbol(chr: char) -> bool {
-  !(chr == ' ' || 
+    !(chr == ' ' || 
    chr == '#' || 
    chr == '\n' || 
    chr == '=' ||  // this is to work in key names. Will have to fixe someday
-   chr == '{' ||
-   chr == '}' )
+   chr == '{' || chr == '}')
 }
 
 pub fn until_eol<'a, T: ?Sized>(input: &'a T) -> IResult<&'a T, &'a T>
@@ -41,7 +40,7 @@ pub fn until_eol<'a, T: ?Sized>(input: &'a T) -> IResult<&'a T, &'a T>
             }
         } else {
             if !(chr == ' ' || chr == '\t') || chr == '\n' {
-                    return Done(&input[idx..], &input[0..idx]);
+                return Done(&input[idx..], &input[0..idx]);
             }
         }
     }
@@ -123,17 +122,22 @@ use std::fs::File;
 
 #[derive(Debug)]
 pub struct Configuration {
-  pub inputs: Vec<(String,  Option<HashMap<String,String>>)>,
-  pub outputs: Vec<(String,  Option<HashMap<String,String>>)>,
+    pub inputs: Vec<(String, Option<HashMap<String, String>>)>,
+    pub outputs: Vec<(String, Option<HashMap<String, String>>)>,
 }
 
 pub fn read_config_file(filename: &str) -> Result<Configuration, String> {
-  println!("Reading config file.");
-  let mut f = File::open(filename).unwrap();
-  let mut s = String::new();
+    println!("Reading config file.");
+    let mut f = File::open(filename).unwrap();
+    let mut s = String::new();
 
-  match f.read_to_string(&mut s) {
-    Ok(_) => Ok(Configuration{ inputs: vec![], outputs: vec![] }),
-    Err(e) => Err(format!("Read error: {:?}", e))
-  }
+    match f.read_to_string(&mut s) {
+        Ok(_) => {
+            Ok(Configuration {
+                inputs: vec![],
+                outputs: vec![],
+            })
+        }
+        Err(e) => Err(format!("Read error: {:?}", e)),
+    }
 }

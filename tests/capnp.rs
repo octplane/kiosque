@@ -159,7 +159,7 @@ mod capnp_tests {
     #[test]
     fn search_things() {
 
-        let files = (1..2)
+        let files = (1..20)
             .map(|ix| format!("data/sample{}.capnp", ix))
             .collect();
         let mut lm = new_from_files(8, files);
@@ -182,7 +182,6 @@ mod capnp_tests {
                     "We have some matches ({}) for something that shouldn't",
                     matches);
         }
-
 
         lm.shutdown();
     }

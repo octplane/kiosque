@@ -5,6 +5,7 @@ use std::thread;
 use std::borrow::Borrow;
 use std::thread::JoinHandle;
 use std::sync::mpsc::{channel, Sender, Receiver};
+use itertools::Itertools;
 
 use capnp;
 use capnp::serialize_packed;
@@ -136,20 +137,23 @@ impl LogFileThread {
         println!("{}: Thread starting.", self.name);
         loop {
             match rx.recv() {
-                Ok(ManagerMessages::ReadFile(file)) => {
-                    match read_log_block(&file) {
-                        Ok(lf) => {
-                            println!("{}: Read file {}", self.name, file);
-                            self.content.push(lf);
-                            tx.send(ClientMessages::ReadFile(file));
-                        }
-                        Err(e) => {
-                            println!("{}: Something went wrong while reading {}: {:?}",
-                                     self.name,
-                                     file,
-                                     e)
+                Ok(ManagerMessages::ReadFiles(files)) => {
+                    println!("Reading {:?}", files);
+                    for file in &files {
+                        match read_log_block(&file) {
+                            Ok(lf) => {
+                                println!("{}: Read file {}", self.name, file);
+                                self.content.push(lf);
+                            }
+                            Err(e) => {
+                                println!("{}: Something went wrong while reading {}: {:?}",
+                                         self.name,
+                                         file,
+                                         e)
+                            }
                         }
                     }
+                    tx.send(ClientMessages::ReadFiles(files));
                 }
                 Ok(ManagerMessages::FindNeedle(field, needle, r_based)) => {
                     let found = if r_based {
@@ -180,14 +184,14 @@ impl LogFileThread {
 
 #[derive(Debug)]
 pub enum ManagerMessages {
-    ReadFile(String),
+    ReadFiles(Vec<String>),
     FindNeedle(String, String, bool),
     Shutdown(String),
 }
 
 #[derive(Debug)]
 pub enum ClientMessages {
-    ReadFile(String),
+    ReadFiles(Vec<String>),
     FoundNeedle(String, String, String),
     NotFound(String, String, String),
 }
@@ -219,8 +223,8 @@ impl LogManager {
             match c.recv() {
                 Ok(ClientMessages::FoundNeedle(_, _, _)) => count = count + 1,
                 Ok(ClientMessages::NotFound(t, _, _)) => println!("Miss from {}", t),
-                Ok(ClientMessages::ReadFile(f)) => {
-                    panic!("Thread re-read file {}, this is not normal", f)
+                Ok(ClientMessages::ReadFiles(fs)) => {
+                    panic!("Thread re-read files {:?}, this is not normal", fs)
                 }
                 Err(e) => println!("Something went wront on the pipe: {}", e),
             }
@@ -266,16 +270,24 @@ pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
         rx_chans.push(rx);
     }
 
-    for (ix, file) in files.iter().enumerate() {
-        let t_index = ix % t_count;
-        tx_chans[t_index]
-            .send(ManagerMessages::ReadFile(file.clone()))
+
+    // sort by modulo, and group by to initialize the Readers properly
+    for (key, group) in files.iter()
+        .enumerate()
+        .sort_by(|a, b| (a.0 % t_count).cmp(&(b.0 % t_count)))
+        .iter()
+        .group_by(|elt| elt.0 % t_count) {
+        tx_chans[key]
+            .send(ManagerMessages::ReadFiles(group.iter()
+                .map(|ix_file| ix_file.1.clone())
+                .collect()))
             .unwrap();
     }
+
     let mut ready = 0;
     for rx in &mut rx_chans {
         match rx.recv() {
-            Ok(ClientMessages::ReadFile(_)) => ready = ready + 1,
+            Ok(ClientMessages::ReadFiles(_)) => ready = ready + 1,
             Ok(m) => panic!("Unexpected thread message: {:?}", m),
             Err(e) => println!("Something went wront on the pipe: {}", e),
         }

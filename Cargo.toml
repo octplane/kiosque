@@ -29,6 +29,7 @@ hyper = "0.8.1"
 rustc-serialize = "*"
 
 nom = "^1.2.3"
+itertools = "*"
 
 docopt = "*"
 
