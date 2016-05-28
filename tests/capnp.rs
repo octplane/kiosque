@@ -73,7 +73,7 @@ pub fn line_generator(event_count: u32) -> Vec<(DateTime<UTC>, String)> {
              total_duration.num_seconds());
     let mut times = Vec::<i64>::with_capacity(event_count as usize);
 
-    for _ in 1..event_count {
+    for _ in 1..event_count + 1 {
         let _ = times.push(rng.gen_range(0, total_duration.num_seconds()) * 1000000);
     }
     times.sort();
