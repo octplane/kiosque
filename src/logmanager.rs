@@ -75,15 +75,30 @@ pub struct LogThreadsStats {
 
 impl fmt::Display for LogThreadsStats {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = self.lts.iter().fold(UTC::now(), |acc, s| {
+            if s.start < acc {
+                s.start
+            } else {
+                acc
+            }
+        });
+        let e = self.lts.iter().fold(self.lts[0].end, |acc, s| {
+            if s.end > acc {
+                s.end
+            } else {
+                acc
+            }
+        });
         let f_count = self.lts.iter().fold(0, |acc, s| acc + s.file_stats.len());
         let l_count = self.lts.iter().fold(0, |acc, s| acc + s.line_count());
         let b_count = self.lts.iter().fold(0, |acc, s| acc + s.size_bytes());
 
         write!(f,
-               "{} files, {} lines in {}.",
+               "{} files, {} lines in {} (took {}ms to read).",
                f_count,
                l_count,
-               byte_to_human(b_count))
+               byte_to_human(b_count),
+               (e - s).num_milliseconds())
     }
 }
 
@@ -92,7 +107,8 @@ impl fmt::Display for LogThreadsStats {
 #[derive(Debug)]
 pub struct LogThreadStats {
     pub file_stats: Vec<LogFileStats>,
-    pub time: i64,
+    pub start: DateTime<UTC>,
+    pub end: DateTime<UTC>,
 }
 
 impl LogThreadStats {
@@ -213,7 +229,6 @@ impl LogFileThread {
                     for file in files_to_read.iter() {
                         match read_log_block(&file) {
                             Ok(lf) => {
-                                println!("{}: Read file {}", self.name, file);
                                 self.content.push(lf);
                             }
                             Err(e) => {
@@ -231,8 +246,12 @@ impl LogFileThread {
                         .collect::<Vec<LogFileStats>>();
                     let tstats = LogThreadStats {
                         file_stats: fstats,
-                        time: (end - start).num_milliseconds(),
+                        start: start,
+                        end: end,
                     };
+                    let e2 = UTC::now();
+                    println!("Took {}ms to compute stats", (e2 - end).num_milliseconds());
+
                     tx.send(ClientMessages::ReadFiles(tstats));
 
                     files_to_read.clear();

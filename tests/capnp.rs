@@ -71,9 +71,6 @@ pub fn line_generator(event_count: u32) -> Vec<(DateTime<UTC>, String)> {
     let now = UTC::now();
     let mut rng = rand::thread_rng();
     let total_duration = Duration::seconds(rng.gen_range(10, 3600 * 3));
-    println!("Will generate {} events across {} seconds.",
-             event_count,
-             total_duration.num_seconds());
     let mut times = Vec::<i64>::with_capacity(event_count as usize);
 
     for _ in 1..event_count + 1 {
@@ -105,7 +102,6 @@ pub fn line_generator(event_count: u32) -> Vec<(DateTime<UTC>, String)> {
             (datetime, line)
         })
         .collect();
-    println!("Done.");
     return o;
 }
 
@@ -140,8 +136,9 @@ pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32) {
         }
     }
     let file_name = format!("{}{}.capnp", file_suffix, counter);
-    let mut f = File::create(file_name).unwrap();
+    let mut f = File::create(file_name.clone()).unwrap();
     let _ = serialize_packed::write_message(&mut f, &message);
+    println!("Wrote {} lines to {}.", logblock_size, file_name);
 }
 
 #[cfg(test)]
@@ -149,22 +146,44 @@ mod capnp_tests {
     use super::*;
     use log_archive::logmanager::new_from_files;
     use chrono::*;
+    use std::thread;
 
 
     #[test]
     #[ignore]
     fn generate_20_files() {
         println!("Generating test files...");
-        for x in 1..16 {
-            println!("{}", x);
-            build_log_block("data/sample", x, 500000);
+
+
+        let mut threads = vec![];
+
+        for ix in 0..8 {
+            let t = thread::Builder::new()
+                .name(format!("file-thread-{}", ix))
+                .spawn(move || {
+                    println!("{} started.", ix);
+                    for x in 1..20 {
+                        let index = ix * 20 + x;
+                        build_log_block("data/sample", index, 500000);
+                    }
+                    ()
+                });
+            threads.push(t.ok().unwrap());
+        }
+
+        for t in threads {
+            t.join().unwrap();
         }
     }
 
     #[test]
     fn search_things() {
+        // FIXME pick 7GB of log from the data folder (each file is 128MB large)
+        // 55 files.
+        // randomize thie
+        let mut rng = rand::thread_rng();
 
-        let files = (1..2)
+        let files = (1..16)
             .map(|ix| format!("data/sample{}.capnp", ix))
             .collect();
         let mut lm = new_from_files(8, files);
