@@ -69,13 +69,52 @@ pub struct LogFileStats {
 }
 
 impl LogFileStats {
-    pub fn stats(&self) {
-        println!("{}: {} lines for {}",
+    pub fn stats(&self, lts: &mut Vec<LogThreadStats>) {
+        let sorted = lts.sort_by(|a, b| a.time.cmp(&b.time));
+        println!("{}: {} lines for {} (in {:?}ms).",
                  self.fname,
                  self.line_count,
-                 byte_to_human(self.size_bytes));
+                 byte_to_human(self.size_bytes),
+                 sorted);
     }
 }
+
+#[derive(Debug)]
+pub struct LogThreadsStats {
+    pub lts: Vec<LogThreadStats>,
+}
+
+impl fmt::Display for LogThreadsStats {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let f_count = self.lts.iter().fold(0, |acc, s| acc + s.file_stats.len());
+        let l_count = self.lts.iter().fold(0, |acc, s| acc + s.line_count());
+        let b_count = self.lts.iter().fold(0, |acc, s| acc + s.size_bytes());
+
+        write!(f,
+               "{} files, {} lines in {}.",
+               f_count,
+               l_count,
+               byte_to_human(b_count))
+    }
+}
+
+
+
+#[derive(Debug)]
+pub struct LogThreadStats {
+    pub file_stats: Vec<LogFileStats>,
+    pub time: i64,
+}
+
+impl LogThreadStats {
+    pub fn line_count(&self) -> u32 {
+        self.file_stats.iter().fold(0, |acc, fs| acc + fs.line_count)
+    }
+    pub fn size_bytes(&self) -> usize {
+        self.file_stats.iter().fold(0, |acc, fs| acc + fs.size_bytes)
+    }
+}
+
 
 pub struct LogFile {
     pub fname: String,
@@ -181,6 +220,7 @@ impl LogFileThread {
                 Ok(ManagerMessages::QueueFile(file)) => files_to_read.push(file),
                 Ok(ManagerMessages::ReadFiles) => {
                     println!("Reading {:?}", files_to_read);
+                    let start: DateTime<UTC> = UTC::now();
                     for file in files_to_read.iter() {
                         match read_log_block(&file) {
                             Ok(lf) => {
@@ -195,11 +235,16 @@ impl LogFileThread {
                             }
                         }
                     }
-                    let stats = self.content
+                    let end: DateTime<UTC> = UTC::now();
+                    let fstats = self.content
                         .iter()
                         .map(|f| f.get_stats())
                         .collect::<Vec<LogFileStats>>();
-                    tx.send(ClientMessages::ReadFiles(stats));
+                    let tstats = LogThreadStats {
+                        file_stats: fstats,
+                        time: (end - start).num_milliseconds(),
+                    };
+                    tx.send(ClientMessages::ReadFiles(tstats));
 
                     files_to_read.clear();
                 }
@@ -241,7 +286,7 @@ pub enum ManagerMessages {
 
 #[derive(Debug)]
 pub enum ClientMessages {
-    ReadFiles(Vec<LogFileStats>),
+    ReadFiles(LogThreadStats),
     FoundNeedle(String, String, String, LogSearchResult),
     NotFound(String, String, String),
 }
@@ -338,23 +383,20 @@ pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
     let mut content_stats = vec![];
     for rx in &mut rx_chans {
         match rx.recv() {
-            Ok(ClientMessages::ReadFiles(stats)) => {
-                content_stats.push(stats);
+            Ok(ClientMessages::ReadFiles(tstat)) => {
+                content_stats.push(tstat);
                 ready = ready + 1
             }
             Ok(m) => panic!("Unexpected thread message: {:?}", m),
             Err(e) => println!("Something went wront on the pipe: {}", e),
         }
     }
-    let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
-    let duration = end - start;
-    println!("Tooks {}ms to read files", duration.num_milliseconds());
-
     if ready != t_count {
         panic!("Unable to read all files");
     } else {
-        let s = compute_stats(content_stats);
-        s.stats();
+        let ltssts = LogThreadsStats { lts: content_stats };
+        println!("{}", ltssts);
+
     }
 
     LogManager {
@@ -375,21 +417,6 @@ pub fn byte_to_human(byte: usize) -> String {
     }
 
 }
-pub fn compute_stats(stats: Vec<Vec<LogFileStats>>) -> LogFileStats {
-    let f_count = stats.iter().fold(0, |acc, s| acc + s.len());
-    let l_count = stats.iter().fold(0, |acc, s| {
-        acc + s.iter().fold(0, |acc, lfs| acc + lfs.line_count)
-    });
-    let b_count = stats.iter().fold(0, |acc, s| {
-        acc + s.iter().fold(0, |acc, lfs| acc + lfs.size_bytes)
-    });
-    LogFileStats {
-        fname: format!("{} files", f_count),
-        line_count: l_count,
-        size_bytes: b_count,
-    }
-}
-
 
 pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
     let mut f = try!(File::open(file_name));
