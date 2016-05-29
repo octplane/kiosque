@@ -68,17 +68,6 @@ pub struct LogFileStats {
     pub line_count: u32,
 }
 
-impl LogFileStats {
-    pub fn stats(&self, lts: &mut Vec<LogThreadStats>) {
-        let sorted = lts.sort_by(|a, b| a.time.cmp(&b.time));
-        println!("{}: {} lines for {} (in {:?}ms).",
-                 self.fname,
-                 self.line_count,
-                 byte_to_human(self.size_bytes),
-                 sorted);
-    }
-}
-
 #[derive(Debug)]
 pub struct LogThreadsStats {
     pub lts: Vec<LogThreadStats>,
