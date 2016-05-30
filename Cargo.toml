@@ -18,20 +18,20 @@ path = "src/bin/kiosque.rs"
 
 [dependencies]
 
-capnp = "*"
-rand = "*"
+capnp = "0.7.1"
+rand = "0.3.14"
 chrono = "0.2"
-hprof = "*"
-regex = "*"
-openssl = "*"
+hprof = "0.1.3"
+regex = "0.1.69"
+openssl = "0.7.10"
 
 hyper = "0.8.1"
-rustc-serialize = "*"
+rustc-serialize = "0.3.19"
 
 nom = "^1.2.3"
-itertools = "*"
+itertools = "0.4.15"
 
-docopt = "*"
+docopt = "0.6.80"
 
 [dependencies.nickel]
 version = "0.8.0"
