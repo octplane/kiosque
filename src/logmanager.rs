@@ -278,7 +278,6 @@ impl LogFileThread {
                 Err(e) => println!("{}: Error while recv(): {}", self.name, e),
             }
         }
-        println!("{}: Thread stopping", self.name);
     }
 }
 
@@ -332,7 +331,6 @@ impl LogManager {
                 Err(e) => println!("Something went wront on the pipe: {}", e),
             }
         }
-        println!("Found is {}", count);
         count
     }
 }
@@ -373,8 +371,6 @@ pub fn new_from_files(thread_count: usize, files: Vec<String>) -> LogManager {
         rx_chans.push(rx);
     }
 
-
-    let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
 
     for (ix, file) in files.iter().enumerate() {
         tx_chans[ix % t_count]

@@ -181,6 +181,7 @@ mod capnp_tests {
     fn search_things() {
         let mut rng = rand::thread_rng();
         let amount = 7000 / 128; // MEM in MB you want to use / size of log file 128MB
+        let thread_count = 8;
 
         let files = (1..amount)
             .map(|_| {
@@ -189,28 +190,45 @@ mod capnp_tests {
                 format!("data/sample{}.capnp", ix)
             })
             .collect();
-        let mut lm = new_from_files(4, files);
+        let mut lm = new_from_files(8, files);
 
-        {
-            let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
+
+        bench("[HIT] GET with REGEXP", &mut lm, |lm| {
             let matches = lm.find("stdout", "GET", true);
-            println!("Matches: {}", matches);
             assert!(matches > 0, "matches: {} when if should not", matches);
-            let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
-            let duration = end - start;
-            println!("Tooks {}ms to scan and find", duration.num_milliseconds());
-        }
-        {
-            let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
+        });
+
+        bench("[HIT] GET without REGEXP", &mut lm, |lm| {
+            let matches = lm.find("stdout", "GET", false);
+            assert!(matches > 0, "matches: {} when if should not", matches);
+        });
+
+        bench("[HIT] http://bestcyclingreviews.com/top_online_shops with REGEXP",
+              &mut lm,
+              |lm| {
+                  let matches = lm.find("stdout",
+                                        "http://bestcyclingreviews.com/top_online_shops",
+                                        true);
+                  assert!(matches > 0, "matches: {} when if should not", matches);
+              });
+
+        bench("[MISS] with REGEXP", &mut lm, |lm| {
             let matches = lm.find("stdout", "missing string in data", true);
-            let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
-            let duration = end - start;
-            println!("Tooks {}ms to scan and miss", duration.num_milliseconds());
             assert!(matches == 0,
                     "We have some matches ({}) for something that shouldn't",
                     matches);
-        }
+        });
 
         lm.shutdown();
+    }
+
+    fn bench<F>(i: &str, lm: &mut ::log_archive::logmanager::LogManager, f: F)
+        where F: Fn(&mut ::log_archive::logmanager::LogManager)
+    {
+        let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
+        f(lm);
+        let end: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
+        let duration = end - start;
+        println!("{}: tooks {}ms.", i, duration.num_milliseconds());
     }
 }
