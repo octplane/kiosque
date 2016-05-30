@@ -3,6 +3,7 @@ extern crate logformat;
 extern crate chrono;
 extern crate regex;
 extern crate itertools;
+extern crate memmap;
 #[macro_use]
 extern crate nom;
 

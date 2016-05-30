@@ -11,6 +11,8 @@ use chrono::datetime::DateTime;
 use chrono::offset::utc::UTC;
 use chrono::Timelike;
 
+use memmap::{Mmap, Protection};
+
 
 use capnp;
 use capnp::serialize;
@@ -123,7 +125,7 @@ impl LogThreadStats {
 
 pub struct LogFile {
     pub fname: String,
-    pub content: Vec<u8>,
+    pub content: Mmap,
 }
 
 
@@ -134,7 +136,9 @@ impl LogFile {
         ro
     }
     pub fn get_stats(&self) -> LogFileStats {
-        let mut br = BufReader::new(&self.content[..]);
+        let sl = unsafe { self.content.as_slice() };
+
+        let mut br = BufReader::new(sl);
         let line_count = match serialize::read_message(&mut br, self.reader_options()) {
             Ok(message_reader) => {
                 match message_reader.get_root::<logblock::Reader>() {
@@ -154,7 +158,9 @@ impl LogFile {
     pub fn gen_find<F>(&self, field: &str, needle: &str, testf: F) -> LogSearchResult
         where F: Fn(&str, &str) -> bool
     {
-        let mut br = BufReader::new(&self.content[..]);
+        let sl = unsafe { self.content.as_slice() };
+
+        let mut br = BufReader::new(sl);
         let res = match serialize::read_message(&mut br, self.reader_options()) {
             Ok(message_reader) => {
                 match message_reader.get_root::<logblock::Reader>() {
@@ -423,12 +429,15 @@ pub fn byte_to_human(byte: usize) -> String {
 }
 
 pub fn read_log_block(file_name: &str) -> Result<LogFile, ReadError> {
-    let mut f = try!(File::open(file_name));
-    let mut buffer = Vec::new();
+    // let mut f = try!(File::open(file_name));
+    let file_mmap = Mmap::open_path(file_name, Protection::Read).unwrap();
+    // let buffer: &[u8] = unsafe { file_mmap.as_slice() };
 
-    try!(f.read_to_end(&mut buffer));
+    // let mut buffer = Vec::new();
+    // try!(f.read_to_end(&mut buffer));
+
     Ok(LogFile {
         fname: file_name.into(),
-        content: buffer,
+        content: file_mmap,
     })
 }
