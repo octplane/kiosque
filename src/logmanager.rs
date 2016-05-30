@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::fmt;
-use std::io::{self, Read};
+use std::io::{self, Read, BufReader};
 use std::thread;
 use std::borrow::Borrow;
 use std::thread::JoinHandle;
@@ -13,7 +13,7 @@ use chrono::Timelike;
 
 
 use capnp;
-use capnp::serialize_packed;
+use capnp::serialize;
 use logformat::schema_capnp::{logblock, logline};
 
 use regex::Regex;
@@ -134,8 +134,8 @@ impl LogFile {
         ro
     }
     pub fn get_stats(&self) -> LogFileStats {
-        let line_count = match serialize_packed::read_message(&mut self.content.borrow(),
-                                                              self.reader_options()) {
+        let mut br = BufReader::new(&self.content[..]);
+        let line_count = match serialize::read_message(&mut br, self.reader_options()) {
             Ok(message_reader) => {
                 match message_reader.get_root::<logblock::Reader>() {
                     Ok(logblock) => logblock.get_entries().unwrap().len(),
@@ -154,8 +154,8 @@ impl LogFile {
     pub fn gen_find<F>(&self, field: &str, needle: &str, testf: F) -> LogSearchResult
         where F: Fn(&str, &str) -> bool
     {
-        let res = match serialize_packed::read_message(&mut self.content.borrow(),
-                                                       self.reader_options()) {
+        let mut br = BufReader::new(&self.content[..]);
+        let res = match serialize::read_message(&mut br, self.reader_options()) {
             Ok(message_reader) => {
                 match message_reader.get_root::<logblock::Reader>() {
                     Ok(logblock) => {

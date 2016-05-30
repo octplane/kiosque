@@ -9,7 +9,7 @@ extern crate test;
 
 use std::fs::File;
 use capnp::message::Builder;
-use capnp::serialize_packed;
+use capnp::serialize;
 
 use rand::Rng;
 use chrono::duration::Duration;
@@ -137,7 +137,7 @@ pub fn build_log_block(file_suffix: &str, counter: u32, logblock_size: u32) {
     }
     let file_name = format!("{}{}.capnp", file_suffix, counter);
     let mut f = File::create(file_name.clone()).unwrap();
-    let _ = serialize_packed::write_message(&mut f, &message);
+    let _ = serialize::write_message(&mut f, &message);
     println!("Wrote {} lines to {}.", logblock_size, file_name);
 }
 
@@ -147,7 +147,8 @@ mod capnp_tests {
     use log_archive::logmanager::new_from_files;
     use chrono::*;
     use std::thread;
-
+    use rand;
+    use rand::Rng;
 
     #[test]
     #[ignore]
@@ -162,7 +163,7 @@ mod capnp_tests {
                 .name(format!("file-thread-{}", ix))
                 .spawn(move || {
                     println!("{} started.", ix);
-                    for x in 1..20 {
+                    for x in 1..21 {
                         let index = ix * 20 + x;
                         build_log_block("data/sample", index, 500000);
                     }
@@ -178,15 +179,17 @@ mod capnp_tests {
 
     #[test]
     fn search_things() {
-        // FIXME pick 7GB of log from the data folder (each file is 128MB large)
-        // 55 files.
-        // randomize thie
         let mut rng = rand::thread_rng();
+        let amount = 7000 / 128; // MEM in MB you want to use / size of log file 128MB
 
-        let files = (1..16)
-            .map(|ix| format!("data/sample{}.capnp", ix))
+        let files = (1..amount)
+            .map(|_| {
+                let ix: u32 = rng.gen_range(1, 159);
+
+                format!("data/sample{}.capnp", ix)
+            })
             .collect();
-        let mut lm = new_from_files(8, files);
+        let mut lm = new_from_files(4, files);
 
         {
             let start: DateTime<UTC> = UTC::now();       // e.g. `2014-11-28T12:45:59.324310806Z`
